@@ -2,8 +2,8 @@
 
 // Store references to important elements
 let lastCheckedTimestamp = Date.now();
-let userName = "Drew Bomhof";
-let additionalUserNames = ["dbomhof"]; // Add additional usernames to check for
+let userName = ""; // Will be detected from the page
+let additionalUserNames = []; // Will be populated from detected username
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -15,26 +15,85 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Get user settings
-chrome.storage.local.get(['userName', 'additionalUserNames'], (data) => {
-  if (data.userName) {
-    userName = data.userName;
+// Function to detect the current user from the Slack UI
+function detectCurrentUser() {
+  // Try different selectors that might contain the username
+  const userSelectors = [
+    '[data-qa="current-user-name"]',
+    '.p-ia__nav__user__button',
+    '.p-ia_sidebar_header__user_name',
+    '.c-avatar__presence'
+  ];
+  
+  for (const selector of userSelectors) {
+    const element = document.querySelector(selector);
+    if (element) {
+      const detectedName = element.textContent.trim();
+      if (detectedName) {
+        console.log("Detected current user:", detectedName);
+        userName = detectedName;
+        
+        // Generate variations of the username for additional checks
+        const nameParts = detectedName.split(/\s+/);
+        additionalUserNames = [];
+        
+        // Add first name
+        if (nameParts.length > 0) {
+          additionalUserNames.push(nameParts[0].toLowerCase());
+        }
+        
+        // Add last name if available
+        if (nameParts.length > 1) {
+          additionalUserNames.push(nameParts[nameParts.length - 1].toLowerCase());
+        }
+        
+        // Add first initial + last name (common username format)
+        if (nameParts.length > 1) {
+          const firstInitial = nameParts[0].charAt(0).toLowerCase();
+          const lastName = nameParts[nameParts.length - 1].toLowerCase();
+          additionalUserNames.push(firstInitial + lastName);
+        }
+        
+        // Add dbomhof as a specific username to check
+        if (!additionalUserNames.includes('dbomhof')) {
+          additionalUserNames.push('dbomhof');
+        }
+        
+        console.log("Generated additional usernames to check:", additionalUserNames);
+        return true;
+      }
+    }
   }
-  if (data.additionalUserNames) {
-    additionalUserNames = data.additionalUserNames;
+  
+  // If we couldn't detect the username, check the page for other clues
+  const pageTitle = document.title;
+  if (pageTitle && pageTitle.includes(" | ")) {
+    const possibleName = pageTitle.split(" | ")[0].trim();
+    if (possibleName && possibleName !== "Slack") {
+      console.log("Detected possible user from page title:", possibleName);
+      userName = possibleName;
+      
+      // Always include dbomhof in additional usernames
+      additionalUserNames = ['dbomhof'];
+      return true;
+    }
   }
-});
+  
+  console.log("Could not detect current user, using default checks");
+  // If we still couldn't detect, at least check for dbomhof
+  additionalUserNames = ['dbomhof'];
+  return false;
+}
+
+// Try to detect the current user when the script loads
+setTimeout(detectCurrentUser, 3000);
 
 // Function to scan the page for mentions
 function scanForMentions() {
-  // Get the current user name from storage
-  chrome.storage.local.get(['userName', 'additionalUserNames'], (data) => {
-    if (data.userName) {
-      userName = data.userName;
-    }
-    if (data.additionalUserNames) {
-      additionalUserNames = data.additionalUserNames;
-    }
+  // Try to detect the current user if we haven't already
+  if (!userName) {
+    detectCurrentUser();
+  }
     
     const currentTime = Date.now();
     console.log("Scanning for mentions at", new Date(currentTime).toLocaleTimeString());
@@ -253,7 +312,10 @@ function generateId() {
 }
 
 // Initial scan when the script loads
-setTimeout(scanForMentions, 5000);
+setTimeout(() => {
+  detectCurrentUser();
+  scanForMentions();
+}, 5000);
 
 // Set up periodic scanning
 setInterval(scanForMentions, 30000); // Check every 30 seconds

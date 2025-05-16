@@ -6,12 +6,10 @@ chrome.runtime.onInstalled.addListener(() => {
   // Initialize storage
   chrome.storage.local.set({ 
     mentions: [],
-    userName: "Drew Bomhof",
     workspaceId: "E030G10V24F",
     channelId: "C027F3GAQ",
     apiType: "openai",
-    apiKey: "",
-    additionalUserNames: ["dbomhof"] // Add additional usernames to check for
+    apiKey: ""
   });
 });
 
