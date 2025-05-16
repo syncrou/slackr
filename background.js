@@ -6,11 +6,10 @@ chrome.runtime.onInstalled.addListener(() => {
   // Initialize storage
   chrome.storage.local.set({ 
     mentions: [],
-    workspaceId: "E030G10V24F",
-    channelId: "C027F3GAQ",
     apiType: "openai",
     apiKey: "",
     useGemini: false
+    // No hardcoded workspace or channel IDs - will be detected dynamically
   });
 });
 
@@ -26,17 +25,53 @@ function checkForMentions() {
   chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
     if (tabs.length > 0) {
       console.log("Found Slack tabs:", tabs.length);
-      // Send message to all Slack tabs
-      tabs.forEach(tab => {
-        chrome.tabs.sendMessage(tab.id, {action: "checkMentions"}, response => {
-          const error = chrome.runtime.lastError;
-          if (error) {
-            console.log("Error sending message to tab:", error);
+      
+      // First, get workspace/channel info from the first active Slack tab
+      try {
+        chrome.tabs.sendMessage(tabs[0].id, {action: "getWorkspaceInfo"}, (response) => {
+          // Handle any runtime error
+          if (chrome.runtime.lastError) {
+            console.log("Error getting workspace info:", chrome.runtime.lastError.message);
+          } else if (response && response.workspaceId) {
+            console.log(`Got workspace info: ${response.workspaceId}/${response.channelId}`);
+            
+            // Store the workspace/channel info for future use
+            chrome.storage.local.set({
+              currentWorkspaceId: response.workspaceId,
+              currentChannelId: response.channelId
+            });
           }
+          
+          // Continue with sending checkMentions to all tabs
+          scanAllSlackTabs(tabs);
         });
-      });
+      } catch (e) {
+        console.log("Exception getting workspace info:", e.message);
+        // Still try to scan tabs even if getting workspace info fails
+        scanAllSlackTabs(tabs);
+      }
     } else {
       console.log("No Slack tabs found");
+    }
+  });
+}
+
+// Helper function to scan all Slack tabs for mentions
+function scanAllSlackTabs(tabs) {
+  // Send message to all Slack tabs - using a fire-and-forget approach for checkMentions
+  tabs.forEach(tab => {
+    try {
+      // We don't expect a response from the content script for checkMentions
+      // so don't provide a callback - this avoids the "message channel closed" error
+      chrome.tabs.sendMessage(tab.id, {action: "checkMentions"});
+      
+      // Log any runtime error that might occur, but don't wait for a response
+      const error = chrome.runtime.lastError;
+      if (error) {
+        console.log("Error sending message to tab (non-blocking):", error.message || "Unknown error");
+      }
+    } catch (e) {
+      console.log("Exception when sending message to tab:", e.message);
     }
   });
 }
@@ -48,7 +83,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({success: true});
     return true;
   }
-  if (message.action === "mentionFound") {
+  else if (message.action === "workspaceInfoUpdate") {
+    // Store the workspace and channel info from the content script
+    console.log("Received workspace info update:", message.workspaceId, message.channelId);
+    chrome.storage.local.set({
+      currentWorkspaceId: message.workspaceId,
+      currentChannelId: message.channelId
+    });
+    sendResponse({success: true});
+    return true;
+  }
+  else if (message.action === "mentionFound") {
     // Create notification
     chrome.notifications.create({
       type: 'basic',

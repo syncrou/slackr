@@ -1,5 +1,8 @@
 // Popup script that handles the extension popup UI
 
+// The specific Slack channel URL to open and retrieve username from
+const SPECIFIC_SLACK_URL = 'https://app.slack.com/client/T3V50FNAZ/D02S3GX2U56';
+
 document.addEventListener('DOMContentLoaded', function() {
   // Load mentions from storage
   loadMentions();
@@ -18,7 +21,108 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Add event listener for stop using Gemini button
   document.getElementById('stop-using-gemini').addEventListener('click', stopUsingGemini);
+  
+  // Open the specific Slack channel if needed and get username
+  openSpecificSlackChannel();
 });
+
+// Function to open the specific Slack channel and get the username
+function openSpecificSlackChannel() {
+  // Check if the specific Slack channel is already open
+  chrome.tabs.query({url: SPECIFIC_SLACK_URL}, (tabs) => {
+    if (tabs.length > 0) {
+      // The tab is already open, make it active
+      chrome.tabs.update(tabs[0].id, {active: true});
+      
+      // Wait a moment for the tab to become fully active
+      setTimeout(() => {
+        // Get the username from this specific tab
+        getUsernameFromSpecificChannel(tabs[0].id);
+      }, 1000);
+    } else {
+      // Check if any Slack tab is open
+      chrome.tabs.query({url: "https://app.slack.com/*"}, (slackTabs) => {
+        if (slackTabs.length > 0) {
+          // Update the existing Slack tab to our specific URL
+          chrome.tabs.update(slackTabs[0].id, {active: true, url: SPECIFIC_SLACK_URL});
+          
+          // Wait a moment for the tab to load the new URL
+          setTimeout(() => {
+            // Get the username from this specific tab
+            getUsernameFromSpecificChannel(slackTabs[0].id);
+          }, 2000);
+        } else {
+          // No Slack tabs open, create a new one
+          chrome.tabs.create({url: SPECIFIC_SLACK_URL}, (tab) => {
+            // Wait a moment for the new tab to load
+            setTimeout(() => {
+              // Get the username from this specific tab
+              getUsernameFromSpecificChannel(tab.id);
+            }, 3000);
+          });
+        }
+      });
+    }
+  });
+}
+
+// Function to get the username from the specific Slack channel
+function getUsernameFromSpecificChannel(tabId) {
+  const usernameDisplay = document.getElementById('username-display');
+  
+  // Update display to show we're fetching from specific channel
+  usernameDisplay.textContent = 'Fetching username from specific Slack channel...';
+  usernameDisplay.style.color = '#f0ad4e';
+  
+  // First check if user is logged in
+  chrome.tabs.sendMessage(tabId, {action: "checkSlackLoginStatus"}, (response) => {
+    // Check for runtime error which might indicate content script hasn't loaded
+    const error = chrome.runtime.lastError;
+    if (error) {
+      usernameDisplay.textContent = 'Waiting for Slack to load...';
+      usernameDisplay.style.color = '#f0ad4e';
+      
+      // Try again after a delay
+      setTimeout(() => getUsernameFromSpecificChannel(tabId), 3000);
+      return;
+    }
+    
+    if (response && response.isLoginPage) {
+      usernameDisplay.textContent = 'Please sign in to Slack first';
+      usernameDisplay.style.color = '#d9534f';
+      return;
+    }
+    
+    // If not on login page, try to get username
+    chrome.tabs.sendMessage(tabId, {action: "getDetectedUsername"}, (response) => {
+      if (response && response.userName) {
+        usernameDisplay.textContent = response.userName;
+        usernameDisplay.style.color = '#5cb85c';
+        
+        // Store the username in local storage for future reference
+        chrome.storage.local.set({ 
+          detectedUsername: response.userName,
+          additionalUserNames: response.additionalUserNames || []
+        });
+        
+        if (response.additionalUserNames && response.additionalUserNames.length > 0) {
+          const additionalNames = document.createElement('div');
+          additionalNames.style.fontSize = '0.8em';
+          additionalNames.style.color = '#888';
+          additionalNames.style.marginTop = '5px';
+          additionalNames.textContent = 'Also checking for: ' + response.additionalUserNames.join(', ');
+          usernameDisplay.appendChild(additionalNames);
+        }
+      } else {
+        usernameDisplay.textContent = 'Username not detected in specific channel';
+        usernameDisplay.style.color = '#f0ad4e';
+        
+        // Try again after a delay, as the content script might need more time
+        setTimeout(() => getUsernameFromSpecificChannel(tabId), 3000);
+      }
+    });
+  });
+}
 
 // Function to enable Gemini
 function useGemini() {
