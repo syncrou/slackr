@@ -23,9 +23,6 @@ chrome.storage.local.get(['userName'], (data) => {
 
 // Function to scan the page for mentions
 function scanForMentions() {
-  // This is a simplified approach - in a real implementation,
-  // you would need to handle Slack's dynamic content loading
-  
   // Get the current user name from storage
   chrome.storage.local.get(['userName'], (data) => {
     if (data.userName) {
@@ -33,20 +30,59 @@ function scanForMentions() {
     }
     
     const currentTime = Date.now();
+    console.log("Scanning for mentions at", new Date(currentTime).toLocaleTimeString());
+    
+    // Check if we're in a browser compatibility message page
+    if (document.querySelector('h1') && document.querySelector('h1').textContent.includes('Please change browsers')) {
+      console.log("Detected browser compatibility message. Slack may not be fully loaded.");
+      // Still notify about the unread message based on URL
+      const url = window.location.href;
+      if (url.includes('/client/')) {
+        const parts = url.split('/');
+        const workspaceId = parts[parts.length - 2];
+        const channelId = parts[parts.length - 1];
+        
+        // If this is a direct message channel (usually starts with D)
+        if (channelId.startsWith('D')) {
+          chrome.runtime.sendMessage({
+            action: "mentionFound",
+            id: generateId(),
+            text: "You have an unread direct message. Please open Slack in a supported browser to view it.",
+            threadId: Date.now().toString(),
+            channelId: channelId,
+            isDM: true
+          });
+        }
+      }
+      return;
+    }
     
     // Look for messages that mention the user
-    const messages = document.querySelectorAll('.c-message__body, .p-rich_text_section');
+    const messages = document.querySelectorAll('.c-message__body, .p-rich_text_section, [data-qa="message_content"]');
+    
+    if (messages.length === 0) {
+      console.log("No message elements found. Checking for unread indicators.");
+    } else {
+      console.log(`Found ${messages.length} message elements`);
+    }
+    
+    // Check if we're in a DM channel by URL
+    const url = window.location.href;
+    const isDMByUrl = url.includes('/client/') && url.split('/').pop().startsWith('D');
     
     messages.forEach(message => {
       // Check if the message contains the user's name or is a direct message
-      const isDM = document.querySelector('.p-channel_sidebar__channel--im.p-channel_sidebar__channel--selected') !== null;
+      const isDM = isDMByUrl || 
+                  document.querySelector('.p-channel_sidebar__channel--im.p-channel_sidebar__channel--selected') !== null ||
+                  document.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null;
+      
       const isMention = message.textContent.includes(userName) || 
                         message.textContent.includes('@' + userName) ||
                         message.innerHTML.includes('data-stringify-at-mention');
       
       if (isMention || isDM) {
         // Get the message container to extract more info
-        const container = message.closest('.c-virtual_list__item, .c-message_kit__message');
+        const container = message.closest('.c-virtual_list__item, .c-message_kit__message, [data-qa="virtual-list-item"]');
         if (container) {
           const messageId = container.getAttribute('data-message-id') || generateId();
           const threadId = container.getAttribute('data-thread-ts') || container.getAttribute('data-ts') || '';
@@ -55,18 +91,20 @@ function scanForMentions() {
           // Check if this is a new mention since last check
           const messageTimestamp = parseInt(threadId.split('.')[0]) * 1000 || Date.now();
           if (messageTimestamp > lastCheckedTimestamp) {
+            console.log("Found new mention/message:", message.textContent.substring(0, 50) + "...");
+            
             // Send message to background script
             chrome.runtime.sendMessage({
               action: "mentionFound",
               id: messageId,
-              text: message.textContent,
+              text: message.textContent || "New message in Slack",
               threadId: threadId,
               channelId: channelId,
               isDM: isDM
             });
             
             // Highlight the message
-            const messageElement = message.closest('.c-message, .c-message_kit__message');
+            const messageElement = message.closest('.c-message, .c-message_kit__message, [data-qa="message-container"]');
             if (messageElement) {
               messageElement.style.backgroundColor = 'rgba(255, 255, 0, 0.2)';
             }
@@ -75,15 +113,78 @@ function scanForMentions() {
       }
     });
     
-    // Also check for unread indicators in the sidebar
-    const unreadChannels = document.querySelectorAll('.p-channel_sidebar__channel--unread');
-    unreadChannels.forEach(channel => {
-      // Click on unread channels to check their content
-      if (channel.querySelector('.p-channel_sidebar__badge') !== null) {
-        console.log('Found unread channel:', channel.textContent);
-        // We don't automatically click, but we could add this feature
+    // Check for unread indicators in the sidebar
+    const unreadIndicators = [
+      '.p-channel_sidebar__channel--unread',
+      '[data-qa="channel_sidebar_unread_channel"]',
+      '.c-mention_badge',
+      '[data-qa="mentions_badge"]'
+    ];
+    
+    unreadIndicators.forEach(selector => {
+      const elements = document.querySelectorAll(selector);
+      if (elements.length > 0) {
+        console.log(`Found ${elements.length} unread indicators with selector: ${selector}`);
+        
+        elements.forEach(element => {
+          const channelName = element.textContent.trim();
+          const channelElement = element.closest('[data-qa="channel_sidebar_channel_button"]') || 
+                                element.closest('.p-channel_sidebar__channel');
+          
+          if (channelElement) {
+            const channelId = channelElement.getAttribute('data-qa-channel-id') || 
+                             channelElement.getAttribute('data-channel-id') ||
+                             generateId();
+            
+            const isDM = channelElement.classList.contains('p-channel_sidebar__channel--im') ||
+                        channelElement.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null;
+            
+            // Only notify about new unread messages
+            if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
+              chrome.runtime.sendMessage({
+                action: "mentionFound",
+                id: generateId(),
+                text: `You have unread messages in ${channelName || (isDM ? "a direct message" : "a channel")}`,
+                threadId: Date.now().toString(),
+                channelId: channelId,
+                isDM: isDM
+              });
+            }
+          }
+        });
       }
     });
+    
+    // Check for the red dot notification indicator
+    const redDots = document.querySelectorAll('.c-mention_badge, [data-qa="mentions_badge"]');
+    if (redDots.length > 0) {
+      console.log(`Found ${redDots.length} red dot notifications`);
+      
+      // Notify about mentions
+      if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
+        chrome.runtime.sendMessage({
+          action: "mentionFound",
+          id: generateId(),
+          text: "You have unread mentions or messages in Slack",
+          threadId: Date.now().toString(),
+          channelId: "general",
+          isDM: false
+        });
+      }
+    }
+    
+    // Check if we're in a DM channel by URL and notify
+    if (isDMByUrl && Date.now() - lastCheckedTimestamp > 30000) { // Only check every 30 seconds
+      const channelId = window.location.pathname.split('/').pop();
+      chrome.runtime.sendMessage({
+        action: "mentionFound",
+        id: generateId(),
+        text: "You have a direct message conversation open",
+        threadId: Date.now().toString(),
+        channelId: channelId,
+        isDM: true
+      });
+    }
     
     lastCheckedTimestamp = currentTime;
   });
@@ -125,3 +226,9 @@ function generateId() {
 
 // Initial scan when the script loads
 setTimeout(scanForMentions, 5000);
+
+// Set up periodic scanning
+setInterval(scanForMentions, 30000); // Check every 30 seconds
+
+// Log that the content script has loaded
+console.log("Slack Mention Monitor content script loaded at", new Date().toLocaleTimeString());

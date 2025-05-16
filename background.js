@@ -23,9 +23,18 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Function to check for mentions
 function checkForMentions() {
-  chrome.tabs.query({url: "https://app.slack.com/client/*"}, (tabs) => {
+  chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
     if (tabs.length > 0) {
-      chrome.tabs.sendMessage(tabs[0].id, {action: "checkMentions"});
+      console.log("Found Slack tabs:", tabs.length);
+      // Send message to all Slack tabs
+      tabs.forEach(tab => {
+        chrome.tabs.sendMessage(tab.id, {action: "checkMentions"}, response => {
+          const error = chrome.runtime.lastError;
+          if (error) {
+            console.log("Error sending message to tab:", error);
+          }
+        });
+      });
     } else {
       console.log("No Slack tabs found");
     }
