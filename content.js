@@ -3,6 +3,7 @@
 // Store references to important elements
 let lastCheckedTimestamp = Date.now();
 let userName = "Drew Bomhof";
+let additionalUserNames = ["dbomhof"]; // Add additional usernames to check for
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -15,18 +16,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Get user settings
-chrome.storage.local.get(['userName'], (data) => {
+chrome.storage.local.get(['userName', 'additionalUserNames'], (data) => {
   if (data.userName) {
     userName = data.userName;
+  }
+  if (data.additionalUserNames) {
+    additionalUserNames = data.additionalUserNames;
   }
 });
 
 // Function to scan the page for mentions
 function scanForMentions() {
   // Get the current user name from storage
-  chrome.storage.local.get(['userName'], (data) => {
+  chrome.storage.local.get(['userName', 'additionalUserNames'], (data) => {
     if (data.userName) {
       userName = data.userName;
+    }
+    if (data.additionalUserNames) {
+      additionalUserNames = data.additionalUserNames;
     }
     
     const currentTime = Date.now();
@@ -76,9 +83,30 @@ function scanForMentions() {
                   document.querySelector('.p-channel_sidebar__channel--im.p-channel_sidebar__channel--selected') !== null ||
                   document.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null;
       
-      const isMention = message.textContent.includes(userName) || 
-                        message.textContent.includes('@' + userName) ||
-                        message.innerHTML.includes('data-stringify-at-mention');
+      // Check for primary username or any additional usernames
+      let isMention = message.textContent.includes(userName) || 
+                      message.textContent.includes('@' + userName) ||
+                      message.innerHTML.includes('data-stringify-at-mention');
+      
+      // Check for additional usernames
+      for (const additionalName of additionalUserNames) {
+        if (message.textContent.includes(additionalName) || 
+            message.textContent.includes('@' + additionalName)) {
+          isMention = true;
+          console.log(`Found mention of additional username: ${additionalName}`);
+          break;
+        }
+      }
+      
+      // Special check for the specific URL
+      if (window.location.href.includes('client/E030G10V24F/D03SPCDSBFW')) {
+        console.log("Checking specific Slack conversation for dbomhof mentions");
+        if (message.textContent.includes('dbomhof') || 
+            message.textContent.includes('@dbomhof')) {
+          isMention = true;
+          console.log("Found dbomhof mention in the specific conversation");
+        }
+      }
       
       if (isMention || isDM) {
         // Get the message container to extract more info
@@ -229,6 +257,15 @@ setTimeout(scanForMentions, 5000);
 
 // Set up periodic scanning
 setInterval(scanForMentions, 30000); // Check every 30 seconds
+
+// Special check for the specific URL
+if (window.location.href.includes('client/E030G10V24F/D03SPCDSBFW')) {
+  console.log("Detected specific Slack conversation URL, checking more frequently");
+  setInterval(() => {
+    console.log("Running special check for dbomhof mentions");
+    scanForMentions();
+  }, 10000); // Check every 10 seconds for this specific URL
+}
 
 // Log that the content script has loaded
 console.log("Slack Mention Monitor content script loaded at", new Date().toLocaleTimeString());

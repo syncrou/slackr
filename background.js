@@ -10,7 +10,8 @@ chrome.runtime.onInstalled.addListener(() => {
     workspaceId: "E030G10V24F",
     channelId: "C027F3GAQ",
     apiType: "openai",
-    apiKey: ""
+    apiKey: "",
+    additionalUserNames: ["dbomhof"] // Add additional usernames to check for
   });
 });
 
