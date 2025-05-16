@@ -124,10 +124,7 @@ function sendResponse(threadId, responseText) {
 
 // Load settings from storage
 function loadSettings() {
-  chrome.storage.local.get(['userName', 'apiType', 'apiKey'], (data) => {
-    if (data.userName) {
-      document.getElementById('username').value = data.userName;
-    }
+  chrome.storage.local.get(['apiType', 'apiKey'], (data) => {
     if (data.apiType) {
       document.getElementById('api-type').value = data.apiType;
     }
@@ -135,18 +132,36 @@ function loadSettings() {
       document.getElementById('api-key').value = data.apiKey;
     }
   });
+  
+  // Get the detected username from active Slack tabs
+  chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
+    if (tabs.length > 0) {
+      chrome.tabs.sendMessage(tabs[0].id, {action: "getDetectedUsername"}, (response) => {
+        const usernameDisplay = document.getElementById('username-display');
+        if (response && response.userName) {
+          usernameDisplay.textContent = response.userName;
+          if (response.additionalUserNames && response.additionalUserNames.length > 0) {
+            const additionalNames = document.createElement('div');
+            additionalNames.style.fontSize = '0.8em';
+            additionalNames.style.color = '#888';
+            additionalNames.style.marginTop = '5px';
+            additionalNames.textContent = 'Also checking for: ' + response.additionalUserNames.join(', ');
+            usernameDisplay.appendChild(additionalNames);
+          }
+        } else {
+          usernameDisplay.textContent = 'Not detected (open Slack to detect)';
+        }
+      });
+    } else {
+      document.getElementById('username-display').textContent = 'Not detected (open Slack to detect)';
+    }
+  });
 }
 
 // Save settings to storage
 function saveSettings() {
-  const userName = document.getElementById('username').value.trim();
   const apiType = document.getElementById('api-type').value;
   const apiKey = document.getElementById('api-key').value.trim();
-  
-  if (!userName) {
-    alert("Please enter a valid username.");
-    return;
-  }
   
   if (!apiKey) {
     alert("Please enter an API key.");
@@ -154,7 +169,6 @@ function saveSettings() {
   }
   
   chrome.storage.local.set({ 
-    userName: userName,
     apiType: apiType,
     apiKey: apiKey
   }, () => {

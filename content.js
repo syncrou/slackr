@@ -11,6 +11,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     scanForMentions();
   } else if (message.action === "sendResponse") {
     sendSlackResponse(message.threadId, message.responseText);
+  } else if (message.action === "getDetectedUsername") {
+    sendResponse({
+      userName: userName,
+      additionalUserNames: additionalUserNames
+    });
   }
   return true;
 });
