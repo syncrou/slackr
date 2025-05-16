@@ -274,7 +274,6 @@ function scanForMentions() {
     }
     
     lastCheckedTimestamp = currentTime;
-  });
 }
 
 // Function to send a response in Slack
