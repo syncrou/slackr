@@ -62,10 +62,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Store the mention and generate responses asynchronously
     (async () => {
-      const responses = await generateResponses(message.text);
+      // Only generate responses if it's an actual mention, not just an unread message
+      const responses = message.isMention ? await generateResponses(message.text) : [];
       
+      // Check if this message ID already exists in storage
       chrome.storage.local.get('mentions', (data) => {
         const mentions = data.mentions || [];
+        
+        // Check if this message already exists
+        const existingIndex = mentions.findIndex(m => m.id === message.id);
+        if (existingIndex >= 0) {
+          console.log("Message already exists in storage, skipping");
+          return;
+        }
+        
         mentions.push({
           id: message.id,
           text: message.text,
@@ -73,6 +83,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           threadId: message.threadId,
           channelId: message.channelId,
           messageUrl: message.messageUrl || null,
+          isMention: message.isMention || false,
           suggestedResponses: responses
         });
         chrome.storage.local.set({ mentions: mentions });

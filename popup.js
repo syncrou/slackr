@@ -61,6 +61,16 @@ function loadMentions() {
         mentionElement.title = 'Click to open this message in Slack';
         mentionElement.addEventListener('click', () => {
           openSlackMessage(mention.messageUrl);
+          
+          // Remove the mention from storage when clicked
+          chrome.storage.local.get('mentions', (data) => {
+            const mentions = data.mentions || [];
+            const updatedMentions = mentions.filter(m => m.id !== mention.id);
+            chrome.storage.local.set({ mentions: updatedMentions }, () => {
+              // Reload mentions
+              loadMentions();
+            });
+          });
         });
       }
       
@@ -75,8 +85,8 @@ function loadMentions() {
       const responsesElement = document.createElement('div');
       responsesElement.className = 'responses';
       
-      // Add suggested responses
-      if (mention.suggestedResponses && mention.suggestedResponses.length > 0) {
+      // Add suggested responses only if it's an actual mention
+      if (mention.isMention && mention.suggestedResponses && mention.suggestedResponses.length > 0) {
         mention.suggestedResponses.forEach(response => {
           const responseButton = document.createElement('button');
           responseButton.className = 'response-btn';

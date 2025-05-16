@@ -168,8 +168,8 @@ function scanForMentions() {
                   document.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null;
       
       // Check for primary username or any additional usernames
-      let isMention = message.textContent.includes(userName) || 
-                      message.textContent.includes('@' + userName) ||
+      let isMention = (message.textContent.includes(userName) && userName !== "") || 
+                      (message.textContent.includes('@' + userName) && userName !== "") ||
                       message.innerHTML.includes('data-stringify-at-mention');
       
       // Check for additional usernames
@@ -223,6 +223,7 @@ function scanForMentions() {
               threadId: threadId,
               channelId: channelId,
               isDM: isDM,
+              isMention: isMention, // Flag to indicate if this is an actual mention
               messageUrl: messageUrl
             });
             
@@ -274,6 +275,7 @@ function scanForMentions() {
                 threadId: Date.now().toString(),
                 channelId: channelId,
                 isDM: isDM,
+                isMention: false, // Not a direct mention
                 messageUrl: messageUrl
               });
             }
@@ -299,6 +301,7 @@ function scanForMentions() {
           threadId: Date.now().toString(),
           channelId: "general",
           isDM: false,
+          isMention: false, // Not a direct mention
           messageUrl: messageUrl
         });
       }
@@ -317,6 +320,7 @@ function scanForMentions() {
         threadId: Date.now().toString(),
         channelId: channelId,
         isDM: true,
+        isMention: false, // Not a direct mention
         messageUrl: messageUrl
       });
     }
