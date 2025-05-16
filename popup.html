@@ -26,6 +26,22 @@
       border-radius: 4px;
       padding: 10px;
       margin-bottom: 10px;
+      position: relative;
+    }
+    .mention:hover {
+      background-color: #f9f9f9;
+      border-color: #4A154B;
+    }
+    .mention::after {
+      content: "🔗";
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      font-size: 16px;
+      opacity: 0.6;
+    }
+    .mention:hover::after {
+      opacity: 1;
     }
     .mention-text {
       margin-bottom: 10px;

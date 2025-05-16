@@ -55,6 +55,15 @@ function loadMentions() {
       mentionElement.dataset.threadId = mention.threadId;
       mentionElement.dataset.channelId = mention.channelId;
       
+      // Add click handler to the mention element if we have a message URL
+      if (mention.messageUrl) {
+        mentionElement.style.cursor = 'pointer';
+        mentionElement.title = 'Click to open this message in Slack';
+        mentionElement.addEventListener('click', () => {
+          openSlackMessage(mention.messageUrl);
+        });
+      }
+      
       const textElement = document.createElement('div');
       textElement.className = 'mention-text';
       textElement.textContent = mention.text;
@@ -92,6 +101,19 @@ function loadMentions() {
 function formatTimestamp(timestamp) {
   const date = new Date(timestamp);
   return date.toLocaleString();
+}
+
+// Function to open a Slack message in the active Slack tab
+function openSlackMessage(messageUrl) {
+  chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
+    if (tabs.length > 0) {
+      // Navigate to the message URL
+      chrome.tabs.update(tabs[0].id, {active: true, url: messageUrl});
+    } else {
+      // If no Slack tab is open, open a new one
+      chrome.tabs.create({url: messageUrl});
+    }
+  });
 }
 
 // Send a response to a Slack thread

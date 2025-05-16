@@ -72,6 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           timestamp: new Date().toISOString(),
           threadId: message.threadId,
           channelId: message.channelId,
+          messageUrl: message.messageUrl || null,
           suggestedResponses: responses
         });
         chrome.storage.local.set({ mentions: mentions });

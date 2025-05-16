@@ -205,6 +205,16 @@ function scanForMentions() {
           if (messageTimestamp > lastCheckedTimestamp) {
             console.log("Found new mention/message:", message.textContent.substring(0, 50) + "...");
             
+            // Get the current URL to create a direct link to the message
+            let messageUrl = window.location.href;
+            // Add the thread timestamp as a fragment if it's not already in the URL
+            if (threadId && !messageUrl.includes(threadId)) {
+              // Remove any existing fragment
+              messageUrl = messageUrl.split('#')[0];
+              // Add the thread timestamp as a fragment
+              messageUrl += '#' + threadId;
+            }
+            
             // Send message to background script
             chrome.runtime.sendMessage({
               action: "mentionFound",
@@ -212,7 +222,8 @@ function scanForMentions() {
               text: message.textContent || "New message in Slack",
               threadId: threadId,
               channelId: channelId,
-              isDM: isDM
+              isDM: isDM,
+              messageUrl: messageUrl
             });
             
             // Highlight the message
@@ -253,13 +264,17 @@ function scanForMentions() {
             
             // Only notify about new unread messages
             if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
+              // Get the current URL to create a direct link
+              const messageUrl = window.location.href;
+      
               chrome.runtime.sendMessage({
                 action: "mentionFound",
                 id: generateId(),
                 text: `You have unread messages in ${channelName || (isDM ? "a direct message" : "a channel")}`,
                 threadId: Date.now().toString(),
                 channelId: channelId,
-                isDM: isDM
+                isDM: isDM,
+                messageUrl: messageUrl
               });
             }
           }
@@ -274,13 +289,17 @@ function scanForMentions() {
       
       // Notify about mentions
       if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
+        // Get the current URL to create a direct link
+        const messageUrl = window.location.href;
+      
         chrome.runtime.sendMessage({
           action: "mentionFound",
           id: generateId(),
           text: "You have unread mentions or messages in Slack",
           threadId: Date.now().toString(),
           channelId: "general",
-          isDM: false
+          isDM: false,
+          messageUrl: messageUrl
         });
       }
     }
@@ -288,13 +307,17 @@ function scanForMentions() {
     // Check if we're in a DM channel by URL and notify
     if (isDMByUrl && Date.now() - lastCheckedTimestamp > 30000) { // Only check every 30 seconds
       const channelId = window.location.pathname.split('/').pop();
+      // Get the current URL to create a direct link
+      const messageUrl = window.location.href;
+    
       chrome.runtime.sendMessage({
         action: "mentionFound",
         id: generateId(),
         text: "You have a direct message conversation open",
         threadId: Date.now().toString(),
         channelId: channelId,
-        isDM: true
+        isDM: true,
+        messageUrl: messageUrl
       });
     }
     
