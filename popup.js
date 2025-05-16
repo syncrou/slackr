@@ -136,24 +136,48 @@ function loadSettings() {
   // Get the detected username from active Slack tabs
   chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
     if (tabs.length > 0) {
-      chrome.tabs.sendMessage(tabs[0].id, {action: "getDetectedUsername"}, (response) => {
+      // First check if we're on the login page
+      chrome.tabs.sendMessage(tabs[0].id, {action: "checkSlackLoginStatus"}, (response) => {
         const usernameDisplay = document.getElementById('username-display');
-        if (response && response.userName) {
-          usernameDisplay.textContent = response.userName;
-          if (response.additionalUserNames && response.additionalUserNames.length > 0) {
-            const additionalNames = document.createElement('div');
-            additionalNames.style.fontSize = '0.8em';
-            additionalNames.style.color = '#888';
-            additionalNames.style.marginTop = '5px';
-            additionalNames.textContent = 'Also checking for: ' + response.additionalUserNames.join(', ');
-            usernameDisplay.appendChild(additionalNames);
-          }
-        } else {
-          usernameDisplay.textContent = 'Not detected (open Slack to detect)';
+        
+        // Check for runtime error which might indicate content script hasn't loaded
+        const error = chrome.runtime.lastError;
+        if (error) {
+          usernameDisplay.textContent = 'Waiting for Slack to load...';
+          usernameDisplay.style.color = '#f0ad4e';
+          return;
         }
+        
+        if (response && response.isLoginPage) {
+          usernameDisplay.textContent = 'Please sign in to Slack first';
+          usernameDisplay.style.color = '#d9534f';
+          return;
+        }
+        
+        // If not on login page, try to get username
+        chrome.tabs.sendMessage(tabs[0].id, {action: "getDetectedUsername"}, (response) => {
+          if (response && response.userName) {
+            usernameDisplay.textContent = response.userName;
+            usernameDisplay.style.color = '#5cb85c';
+            
+            if (response.additionalUserNames && response.additionalUserNames.length > 0) {
+              const additionalNames = document.createElement('div');
+              additionalNames.style.fontSize = '0.8em';
+              additionalNames.style.color = '#888';
+              additionalNames.style.marginTop = '5px';
+              additionalNames.textContent = 'Also checking for: ' + response.additionalUserNames.join(', ');
+              usernameDisplay.appendChild(additionalNames);
+            }
+          } else {
+            usernameDisplay.textContent = 'Not detected (Slack is open but username not found)';
+            usernameDisplay.style.color = '#f0ad4e';
+          }
+        });
       });
     } else {
-      document.getElementById('username-display').textContent = 'Not detected (open Slack to detect)';
+      const usernameDisplay = document.getElementById('username-display');
+      usernameDisplay.textContent = 'Not detected (open Slack to detect)';
+      usernameDisplay.style.color = '#d9534f';
     }
   });
 }

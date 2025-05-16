@@ -16,18 +16,38 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       userName: userName,
       additionalUserNames: additionalUserNames
     });
+  } else if (message.action === "checkSlackLoginStatus") {
+    // Check if we're on the login page
+    const isLoginPage = document.querySelector('h1') && 
+                        (document.querySelector('h1').textContent.includes('Sign in to your workspace') ||
+                         document.querySelector('input[placeholder="your-workspace"]') !== null);
+    
+    sendResponse({
+      isLoginPage: isLoginPage
+    });
   }
   return true;
 });
 
 // Function to detect the current user from the Slack UI
 function detectCurrentUser() {
+  // Check if we're on the login page
+  const isLoginPage = document.querySelector('h1') && 
+                      (document.querySelector('h1').textContent.includes('Sign in to your workspace') ||
+                       document.querySelector('input[placeholder="your-workspace"]') !== null);
+  
+  if (isLoginPage) {
+    console.log("On Slack login page - cannot detect username yet");
+    return false;
+  }
+  
   // Try different selectors that might contain the username
   const userSelectors = [
     '[data-qa="current-user-name"]',
     '.p-ia__nav__user__button',
     '.p-ia_sidebar_header__user_name',
-    '.c-avatar__presence'
+    '.c-avatar__presence',
+    '.p-ia__sidebar_header__user__name'
   ];
   
   for (const selector of userSelectors) {
