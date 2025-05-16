@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Slack Mention Monitor",
+  "version": "1.0",
+  "description": "Monitors Slack for mentions and provides suggested responses",
+  "permissions": ["tabs", "storage", "alarms", "notifications"],
+  "host_permissions": ["https://app.slack.com/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon16.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "images/icon16.png",
+    "48": "images/icon48.png",
+    "128": "images/icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://app.slack.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+}

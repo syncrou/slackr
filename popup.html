@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Slack Mention Monitor</title>
+  <style>
+    body {
+      width: 350px;
+      max-height: 500px;
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    .header {
+      background-color: #4A154B;
+      color: white;
+      padding: 10px;
+      text-align: center;
+    }
+    .content {
+      padding: 10px;
+      overflow-y: auto;
+      max-height: 400px;
+    }
+    .mention {
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .mention-text {
+      margin-bottom: 10px;
+    }
+    .timestamp {
+      color: #888;
+      font-size: 0.8em;
+      margin-bottom: 10px;
+    }
+    .responses {
+      margin-top: 10px;
+    }
+    .response-btn {
+      background-color: #4A154B;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      margin: 5px 0;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      text-align: left;
+    }
+    .response-btn:hover {
+      background-color: #611f69;
+    }
+    .no-mentions {
+      text-align: center;
+      color: #888;
+      margin-top: 20px;
+    }
+    .settings {
+      margin-top: 20px;
+      padding-top: 10px;
+      border-top: 1px solid #ddd;
+    }
+    .settings label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .settings input {
+      width: 100%;
+      padding: 5px;
+      margin-bottom: 10px;
+    }
+    .settings button {
+      background-color: #4A154B;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>Slack Mention Monitor</h2>
+  </div>
+  <div class="content" id="mentions-container">
+    <div class="no-mentions" id="no-mentions">
+      No mentions found yet. The extension will check periodically.
+    </div>
+    <!-- Mentions will be added here dynamically -->
+  </div>
+  <div class="settings">
+    <h3>Settings</h3>
+    <label for="username">Your Slack Username:</label>
+    <input type="text" id="username" placeholder="e.g. Drew Bomhof">
+    <button id="save-settings">Save</button>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>
