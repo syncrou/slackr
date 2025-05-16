@@ -108,9 +108,15 @@ function sendResponse(threadId, responseText) {
 
 // Load settings from storage
 function loadSettings() {
-  chrome.storage.local.get('userName', (data) => {
+  chrome.storage.local.get(['userName', 'apiType', 'apiKey'], (data) => {
     if (data.userName) {
       document.getElementById('username').value = data.userName;
+    }
+    if (data.apiType) {
+      document.getElementById('api-type').value = data.apiType;
+    }
+    if (data.apiKey) {
+      document.getElementById('api-key').value = data.apiKey;
     }
   });
 }
@@ -118,12 +124,24 @@ function loadSettings() {
 // Save settings to storage
 function saveSettings() {
   const userName = document.getElementById('username').value.trim();
+  const apiType = document.getElementById('api-type').value;
+  const apiKey = document.getElementById('api-key').value.trim();
   
-  if (userName) {
-    chrome.storage.local.set({ userName: userName }, () => {
-      alert("Settings saved!");
-    });
-  } else {
+  if (!userName) {
     alert("Please enter a valid username.");
+    return;
   }
+  
+  if (!apiKey) {
+    alert("Please enter an API key.");
+    return;
+  }
+  
+  chrome.storage.local.set({ 
+    userName: userName,
+    apiType: apiType,
+    apiKey: apiKey
+  }, () => {
+    alert("Settings saved!");
+  });
 }
