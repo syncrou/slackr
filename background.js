@@ -23,7 +23,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // Function to check for mentions
 function checkForMentions() {
-  chrome.tabs.query({url: "https://app.slack.com/client/*/C*"}, (tabs) => {
+  chrome.tabs.query({url: "https://app.slack.com/client/*"}, (tabs) => {
     if (tabs.length > 0) {
       chrome.tabs.sendMessage(tabs[0].id, {action: "checkMentions"});
     } else {
@@ -32,8 +32,13 @@ function checkForMentions() {
   });
 }
 
-// Listen for messages from content script
+// Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "checkMentionsManually") {
+    checkForMentions();
+    sendResponse({success: true});
+    return true;
+  }
   if (message.action === "mentionFound") {
     // Create notification
     chrome.notifications.create({

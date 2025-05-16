@@ -9,7 +9,23 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Add event listener for settings save button
   document.getElementById('save-settings').addEventListener('click', saveSettings);
+  
+  // Add event listener for check now button
+  document.getElementById('check-now').addEventListener('click', checkForMentionsNow);
 });
+
+// Function to manually check for mentions
+function checkForMentionsNow() {
+  chrome.runtime.sendMessage({action: "checkMentionsManually"}, (response) => {
+    if (response && response.success) {
+      alert("Checking for mentions...");
+      // Reload mentions after a short delay to allow for processing
+      setTimeout(loadMentions, 2000);
+    } else {
+      alert("Error: " + (response ? response.error : "Unknown error"));
+    }
+  });
+}
 
 // Load mentions from storage
 function loadMentions() {

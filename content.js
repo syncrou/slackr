@@ -26,40 +26,67 @@ function scanForMentions() {
   // This is a simplified approach - in a real implementation,
   // you would need to handle Slack's dynamic content loading
   
-  // Look for messages that mention the user
-  const messages = document.querySelectorAll('.c-message__body');
-  const currentTime = Date.now();
-  
-  messages.forEach(message => {
-    // Check if the message contains the user's name
-    if (message.textContent.includes(userName)) {
-      // Get the message container to extract more info
-      const container = message.closest('.c-virtual_list__item');
-      if (container) {
-        const messageId = container.getAttribute('data-message-id') || generateId();
-        const threadId = container.getAttribute('data-thread-ts') || container.getAttribute('data-ts') || '';
-        const channelId = window.location.pathname.split('/').pop();
-        
-        // Check if this is a new mention since last check
-        const messageTimestamp = parseInt(threadId.split('.')[0]) * 1000;
-        if (messageTimestamp > lastCheckedTimestamp) {
-          // Send message to background script
-          chrome.runtime.sendMessage({
-            action: "mentionFound",
-            id: messageId,
-            text: message.textContent,
-            threadId: threadId,
-            channelId: channelId
-          });
+  // Get the current user name from storage
+  chrome.storage.local.get(['userName'], (data) => {
+    if (data.userName) {
+      userName = data.userName;
+    }
+    
+    const currentTime = Date.now();
+    
+    // Look for messages that mention the user
+    const messages = document.querySelectorAll('.c-message__body, .p-rich_text_section');
+    
+    messages.forEach(message => {
+      // Check if the message contains the user's name or is a direct message
+      const isDM = document.querySelector('.p-channel_sidebar__channel--im.p-channel_sidebar__channel--selected') !== null;
+      const isMention = message.textContent.includes(userName) || 
+                        message.textContent.includes('@' + userName) ||
+                        message.innerHTML.includes('data-stringify-at-mention');
+      
+      if (isMention || isDM) {
+        // Get the message container to extract more info
+        const container = message.closest('.c-virtual_list__item, .c-message_kit__message');
+        if (container) {
+          const messageId = container.getAttribute('data-message-id') || generateId();
+          const threadId = container.getAttribute('data-thread-ts') || container.getAttribute('data-ts') || '';
+          const channelId = window.location.pathname.split('/').pop();
           
-          // Highlight the message
-          message.closest('.c-message').style.backgroundColor = 'rgba(255, 255, 0, 0.2)';
+          // Check if this is a new mention since last check
+          const messageTimestamp = parseInt(threadId.split('.')[0]) * 1000 || Date.now();
+          if (messageTimestamp > lastCheckedTimestamp) {
+            // Send message to background script
+            chrome.runtime.sendMessage({
+              action: "mentionFound",
+              id: messageId,
+              text: message.textContent,
+              threadId: threadId,
+              channelId: channelId,
+              isDM: isDM
+            });
+            
+            // Highlight the message
+            const messageElement = message.closest('.c-message, .c-message_kit__message');
+            if (messageElement) {
+              messageElement.style.backgroundColor = 'rgba(255, 255, 0, 0.2)';
+            }
+          }
         }
       }
-    }
+    });
+    
+    // Also check for unread indicators in the sidebar
+    const unreadChannels = document.querySelectorAll('.p-channel_sidebar__channel--unread');
+    unreadChannels.forEach(channel => {
+      // Click on unread channels to check their content
+      if (channel.querySelector('.p-channel_sidebar__badge') !== null) {
+        console.log('Found unread channel:', channel.textContent);
+        // We don't automatically click, but we could add this feature
+      }
+    });
+    
+    lastCheckedTimestamp = currentTime;
   });
-  
-  lastCheckedTimestamp = currentTime;
 }
 
 // Function to send a response in Slack

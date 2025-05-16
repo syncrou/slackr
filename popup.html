@@ -79,6 +79,22 @@
       border-radius: 4px;
       cursor: pointer;
     }
+    .action-buttons {
+      margin-bottom: 15px;
+    }
+    .action-buttons button {
+      background-color: #4A154B;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 10px;
+    }
+    .action-buttons button:hover {
+      background-color: #611f69;
+    }
   </style>
 </head>
 <body>
@@ -93,6 +109,10 @@
   </div>
   <div class="settings">
     <h3>Settings</h3>
+    <div class="action-buttons">
+      <button id="check-now">Check for Mentions Now</button>
+    </div>
+    
     <label for="username">Your Slack Username:</label>
     <input type="text" id="username" placeholder="e.g. Drew Bomhof">
     
