@@ -4,7 +4,7 @@
   "version": "1.0",
   "description": "Monitors Slack for mentions and provides suggested responses",
   "permissions": ["tabs", "storage", "alarms", "notifications"],
-  "host_permissions": ["https://app.slack.com/*"],
+  "host_permissions": ["https://app.slack.com/*", "https://gemini.google.com/app/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -25,6 +25,10 @@
     {
       "matches": ["https://app.slack.com/*"],
       "js": ["content.js"]
+    },
+    {
+      "matches": ["https://gemini.google.com/app/*"],
+      "js": ["gemini-content.js"]
     }
   ]
 }

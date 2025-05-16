@@ -135,16 +135,28 @@
     </div>
     
     <h4>AI Integration</h4>
-    <label for="api-type">AI Provider:</label>
-    <select id="api-type">
-      <option value="openai">OpenAI</option>
-      <option value="claude">Claude</option>
-    </select>
+    <div id="gemini-available" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #e8f5e9; border-radius: 4px; border: 1px solid #c8e6c9;">
+      <p style="margin: 0 0 10px 0;">Gemini is available in another tab!</p>
+      <button id="use-gemini" style="background-color: #4285F4; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Use Gemini for Responses</button>
+    </div>
     
-    <label for="api-key">API Key:</label>
-    <input type="password" id="api-key" placeholder="Enter your API key">
+    <div id="gemini-active" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #e8f5e9; border-radius: 4px; border: 1px solid #c8e6c9;">
+      <p style="margin: 0 0 10px 0;">Using Gemini for AI responses</p>
+      <button id="stop-using-gemini" style="background-color: #EA4335; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Stop Using Gemini</button>
+    </div>
     
-    <button id="save-settings">Save</button>
+    <div id="api-settings" style="display: block;">
+      <label for="api-type">AI Provider:</label>
+      <select id="api-type">
+        <option value="openai">OpenAI</option>
+        <option value="claude">Claude</option>
+      </select>
+      
+      <label for="api-key">API Key:</label>
+      <input type="password" id="api-key" placeholder="Enter your API key">
+      
+      <button id="save-settings">Save</button>
+    </div>
   </div>
   <script src="popup.js"></script>
 </body>

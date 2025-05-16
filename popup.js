@@ -12,7 +12,37 @@ document.addEventListener('DOMContentLoaded', function() {
   
   // Add event listener for check now button
   document.getElementById('check-now').addEventListener('click', checkForMentionsNow);
+  
+  // Add event listener for use Gemini button
+  document.getElementById('use-gemini').addEventListener('click', useGemini);
+  
+  // Add event listener for stop using Gemini button
+  document.getElementById('stop-using-gemini').addEventListener('click', stopUsingGemini);
 });
+
+// Function to enable Gemini
+function useGemini() {
+  chrome.storage.local.set({ 
+    useGemini: true
+  }, () => {
+    document.getElementById('gemini-active').style.display = 'block';
+    document.getElementById('gemini-available').style.display = 'none';
+    document.getElementById('api-settings').style.display = 'none';
+    alert("Now using Gemini for AI responses!");
+  });
+}
+
+// Function to disable Gemini
+function stopUsingGemini() {
+  chrome.storage.local.set({ 
+    useGemini: false
+  }, () => {
+    document.getElementById('gemini-active').style.display = 'none';
+    document.getElementById('api-settings').style.display = 'block';
+    checkGeminiAvailability();
+    alert("Stopped using Gemini. Please configure an API provider.");
+  });
+}
 
 // Function to manually check for mentions
 function checkForMentionsNow() {
@@ -156,12 +186,24 @@ function sendResponse(threadId, responseText) {
 
 // Load settings from storage
 function loadSettings() {
-  chrome.storage.local.get(['apiType', 'apiKey'], (data) => {
+  chrome.storage.local.get(['apiType', 'apiKey', 'useGemini'], (data) => {
     if (data.apiType) {
       document.getElementById('api-type').value = data.apiType;
     }
     if (data.apiKey) {
       document.getElementById('api-key').value = data.apiKey;
+    }
+    
+    // Check if Gemini is being used
+    if (data.useGemini) {
+      document.getElementById('gemini-active').style.display = 'block';
+      document.getElementById('api-settings').style.display = 'none';
+    } else {
+      document.getElementById('gemini-active').style.display = 'none';
+      document.getElementById('api-settings').style.display = 'block';
+      
+      // Check if Gemini is available
+      checkGeminiAvailability();
     }
   });
   
@@ -214,6 +256,21 @@ function loadSettings() {
   });
 }
 
+// Check if Gemini is available in another tab
+function checkGeminiAvailability() {
+  chrome.tabs.query({url: "https://gemini.google.com/app/*"}, (tabs) => {
+    const geminiAvailableDiv = document.getElementById('gemini-available');
+    
+    if (tabs.length > 0) {
+      // Gemini is available
+      geminiAvailableDiv.style.display = 'block';
+    } else {
+      // Gemini is not available
+      geminiAvailableDiv.style.display = 'none';
+    }
+  });
+}
+
 // Save settings to storage
 function saveSettings() {
   const apiType = document.getElementById('api-type').value;
@@ -226,7 +283,8 @@ function saveSettings() {
   
   chrome.storage.local.set({ 
     apiType: apiType,
-    apiKey: apiKey
+    apiKey: apiKey,
+    useGemini: false
   }, () => {
     alert("Settings saved!");
   });

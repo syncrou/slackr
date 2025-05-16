@@ -9,7 +9,8 @@ chrome.runtime.onInstalled.addListener(() => {
     workspaceId: "E030G10V24F",
     channelId: "C027F3GAQ",
     apiType: "openai",
-    apiKey: ""
+    apiKey: "",
+    useGemini: false
   });
 });
 
@@ -98,16 +99,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // Generate suggested responses based on message content
 async function generateResponses(text) {
   // First check if we have API keys configured
-  const data = await chrome.storage.local.get(['apiType', 'apiKey']);
+  const data = await chrome.storage.local.get(['apiType', 'apiKey', 'useGemini']);
+  
+  // If Gemini is enabled, use it regardless of API key
+  if (data.useGemini) {
+    try {
+      const responses = await getGeminiResponses(text);
+      return responses;
+    } catch (error) {
+      console.error("Error generating Gemini responses:", error);
+      // Fall back to default responses
+      return getDefaultResponses();
+    }
+  }
   
   if (!data.apiKey) {
     // Fall back to default responses if no API key is set
-    return [
-      "Thanks for the mention. I'll look into this.",
-      "I appreciate you bringing this to my attention.",
-      "I'll review this and get back to you shortly.",
-      "Thanks for the update. Let me check on this."
-    ];
+    return getDefaultResponses();
   }
   
   try {
@@ -117,13 +125,18 @@ async function generateResponses(text) {
   } catch (error) {
     console.error("Error generating AI responses:", error);
     // Fall back to default responses on error
-    return [
-      "Thanks for the mention. I'll look into this.",
-      "I appreciate you bringing this to my attention.",
-      "I'll review this and get back to you shortly.",
-      "Thanks for the update. Let me check on this."
-    ];
+    return getDefaultResponses();
   }
+}
+
+// Default responses when no API is available
+function getDefaultResponses() {
+  return [
+    "Thanks for the mention. I'll look into this.",
+    "I appreciate you bringing this to my attention.",
+    "I'll review this and get back to you shortly.",
+    "Thanks for the update. Let me check on this."
+  ];
 }
 
 // Function to get AI-generated responses
@@ -132,9 +145,42 @@ async function getAIResponses(text, apiType, apiKey) {
     return await getOpenAIResponses(text, apiKey);
   } else if (apiType === 'claude') {
     return await getClaudeResponses(text, apiKey);
+  } else if (apiType === 'gemini') {
+    // For Gemini, we'll use the browser tab directly
+    return await getGeminiResponses(text);
   } else {
     throw new Error("Unknown API type");
   }
+}
+
+// Get responses from Gemini by sending a message to the content script in the Gemini tab
+async function getGeminiResponses(text) {
+  return new Promise((resolve, reject) => {
+    // Find Gemini tabs
+    chrome.tabs.query({url: "https://gemini.google.com/app/*"}, (tabs) => {
+      if (tabs.length === 0) {
+        reject(new Error("No Gemini tab found. Please open Gemini in another tab."));
+        return;
+      }
+      
+      // Send message to the first Gemini tab
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "getGeminiResponses",
+        text: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`
+      }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error("Error communicating with Gemini tab: " + chrome.runtime.lastError.message));
+          return;
+        }
+        
+        if (response && response.responses) {
+          resolve(response.responses);
+        } else {
+          reject(new Error("Invalid response from Gemini tab"));
+        }
+      });
+    });
+  });
 }
 
 // Get responses from OpenAI
