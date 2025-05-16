@@ -95,6 +95,17 @@
     <h3>Settings</h3>
     <label for="username">Your Slack Username:</label>
     <input type="text" id="username" placeholder="e.g. Drew Bomhof">
+    
+    <h4>AI Integration</h4>
+    <label for="api-type">AI Provider:</label>
+    <select id="api-type">
+      <option value="openai">OpenAI</option>
+      <option value="claude">Claude</option>
+    </select>
+    
+    <label for="api-key">API Key:</label>
+    <input type="password" id="api-key" placeholder="Enter your API key">
+    
     <button id="save-settings">Save</button>
   </div>
   <script src="popup.js"></script>
