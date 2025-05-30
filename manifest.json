@@ -3,8 +3,8 @@
   "name": "Slack Mention Monitor",
   "version": "1.0",
   "description": "Monitors Slack for mentions and provides suggested responses",
-  "permissions": ["tabs", "storage", "alarms", "notifications"],
-  "host_permissions": ["https://app.slack.com/*", "https://gemini.google.com/app/*"],
+  "permissions": ["tabs", "storage", "alarms", "notifications", "scripting"],
+  "host_permissions": ["https://app.slack.com/*", "https://gemini.google.com/*"],
   "background": {
     "service_worker": "background.js"
   },
@@ -27,7 +27,7 @@
       "js": ["content.js"]
     },
     {
-      "matches": ["https://gemini.google.com/app/*"],
+      "matches": ["https://gemini.google.com/*"],
       "js": ["gemini-content.js"]
     }
   ]

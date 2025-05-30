@@ -3,26 +3,37 @@ console.log("Gemini content script loaded");
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "getGeminiResponses") {
+  if (message.action === "ping") {
+    sendResponse({success: true, timestamp: Date.now()});
+    return true;
+  }
+  else if (message.action === "getGeminiResponses") {
     console.log("Received request for Gemini responses");
+    console.log("Message text:", message.text);
+    console.log("Is channel activity:", message.isChannelActivity);
+    console.log("Channel name:", message.channelName);
     
-    // Check if we're on the Gemini page
-    if (!window.location.href.includes("gemini.google.com/app")) {
-      sendResponse({ error: "Not on Gemini page" });
-      return true;
+    // Prepare the appropriate prompt based on message type
+    let promptText;
+    if (message.isChannelActivity && message.channelName) {
+      // Special manager prompt for channel activity
+      promptText = `I am a manager at a tech firm. This channel is (#${message.channelName}) and this text was just brought up that may include me. Put together a potential answer for this that will provide the right mix of knowledge on the subject at hand: "${message.text}"`;
+    } else {
+      // Regular mention prompt
+      promptText = message.text;
     }
     
-    // Process the request
-    getGeminiResponses(message.text)
+    getGeminiResponses(promptText)
       .then(responses => {
-        sendResponse({ responses });
+        console.log("Gemini responses generated:", responses);
+        sendResponse({ responses: responses });
       })
       .catch(error => {
+        console.error("Error generating Gemini responses:", error);
         sendResponse({ error: error.message });
       });
-    
-    // Return true to indicate we'll respond asynchronously
-    return true;
+      
+    return true; // Indicates we'll send a response asynchronously
   }
 });
 
