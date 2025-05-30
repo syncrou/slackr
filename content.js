@@ -11,9 +11,12 @@ let currentChannelId = "";
 
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "checkMentions") {
+  if (message.action === "ping") {
+    sendResponse({success: true, timestamp: Date.now()});
+    return true;
+  } else if (message.action === "checkMentions") {
     // Just scan for mentions - no response needed
-    scanForMentions();
+    scanForMentions(true); // Pass true to indicate this is a manual check
     // Do NOT return true here, as we're not sending an async response
     return false;
   } else if (message.action === "sendResponse") {
@@ -312,14 +315,14 @@ setTimeout(() => {
 }, 5000);
 
 // Function to scan the page for mentions
-function scanForMentions() {
+function scanForMentions(manualCheck = false) {
   // Try to detect the current user if we haven't already
   if (!userName) {
     detectCurrentUser();
   }
     
     const currentTime = Date.now();
-    console.log("Scanning for mentions at", new Date(currentTime).toLocaleTimeString());
+    console.log("Scanning for mentions and DMs at", new Date(currentTime).toLocaleTimeString());
     console.log("Current URL:", window.location.href);
     console.log("Current username:", userName, "Additional usernames:", additionalUserNames);
     
@@ -426,6 +429,7 @@ function scanForMentions() {
         }
       }
       
+      // Only process if it's a direct mention OR a direct message
       if (isMention || isDM) {
         // Get the message container to extract more info
         const container = message.closest('.c-virtual_list__item, .c-message_kit__message, [data-qa="virtual-list-item"]');
@@ -437,7 +441,7 @@ function scanForMentions() {
           // Check if this is a new mention since last check
           const messageTimestamp = parseInt(threadId.split('.')[0]) * 1000 || Date.now();
           if (messageTimestamp > lastCheckedTimestamp) {
-            console.log("Found new mention/message:", message.textContent.substring(0, 50) + "...");
+            console.log("Found new mention/DM:", message.textContent.substring(0, 50) + "...");
             
             // Get the current URL to create a direct link to the message
             let messageUrl = window.location.href;
@@ -470,199 +474,6 @@ function scanForMentions() {
         }
       }
     });
-    
-    // Check for unread indicators in the sidebar
-    const unreadIndicators = [
-      '.p-channel_sidebar__channel--unread',
-      '[data-qa="channel_sidebar_unread_channel"]',
-      '.c-mention_badge',
-      '[data-qa="mentions_badge"]'
-    ];
-    
-    unreadIndicators.forEach(selector => {
-      const elements = document.querySelectorAll(selector);
-      if (elements.length > 0) {
-        console.log(`Found ${elements.length} unread indicators with selector: ${selector}`);
-        
-        elements.forEach(element => {
-          const channelName = element.textContent.trim();
-          const channelElement = element.closest('[data-qa="channel_sidebar_channel_button"]') || 
-                                element.closest('.p-channel_sidebar__channel');
-          
-          if (channelElement) {
-            // More robust channel ID extraction with advanced fallbacks
-            let channelId = channelElement.getAttribute('data-qa-channel-id') || 
-                           channelElement.getAttribute('data-channel-id');
-            
-            // If we still don't have a channel ID, try to get it from the href attribute
-            if (!channelId) {
-              const linkElement = channelElement.querySelector('a');
-              if (linkElement && linkElement.href) {
-                const hrefMatch = linkElement.href.match(/\/client\/[^\/]+\/([^\/]+)/);
-                if (hrefMatch && hrefMatch[1]) {
-                  channelId = hrefMatch[1];
-                  console.log("Extracted channel ID from href:", channelId);
-                }
-              }
-            }
-            
-            // If we still don't have a channel ID, try to extract it from data attributes
-            if (!channelId) {
-              // Some channels have a data-stringify-id attribute
-              channelId = channelElement.getAttribute('data-stringify-id') || 
-                          channelElement.getAttribute('data-channel-id') ||
-                          channelElement.getAttribute('data-qa-id');
-            }
-            
-            // Special handling for team channels (like team-red-chesterfield-lead)
-            if (!channelId && channelName && channelName.includes('team-')) {
-              // For team channels, try to find or construct an ID based on the name
-              console.log("Detected potential team channel:", channelName);
-              
-              // Check if it's a private channel
-              const isPrivate = channelElement.classList.contains('p-channel_sidebar__channel--private') ||
-                               (channelElement.querySelector('.p-channel_sidebar__channel_icon_prefix--private') !== null);
-              
-              // For private channels, IDs typically start with 'G', for regular channels with 'C'
-              const prefix = isPrivate ? 'G' : 'C';
-              
-              // Try to find the ID in data attributes that might contain it
-              const allAttributes = Array.from(channelElement.attributes)
-                .filter(attr => attr.name.startsWith('data-') && attr.value.startsWith(prefix))
-                .map(attr => attr.value);
-              
-              if (allAttributes.length > 0) {
-                channelId = allAttributes[0];
-                console.log("Found team channel ID from attributes:", channelId);
-              } else {
-                // As a last resort, store the channel name for a lookup approach
-                // This will use the stored workspace ID and regular URL format
-                channelId = channelName.replace(/[^\w-]/g, '').toLowerCase();
-                console.log("Using formatted channel name as ID:", channelId);
-              }
-            }
-            
-            // If we still don't have a channel ID, generate one but add the channel name as a suffix
-            // This improves the chances of matching even with generated IDs
-            if (!channelId) {
-              channelId = generateId() + (channelName ? '_' + channelName.replace(/[^\w-]/g, '') : '');
-              console.log("Generated channel ID with name suffix:", channelId);
-            }
-            
-            const isDM = channelElement.classList.contains('p-channel_sidebar__channel--im') ||
-                        channelElement.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null;
-            
-        // Only notify about new unread messages
-        if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
-          // Extract workspace ID from current URL
-          const currentUrl = window.location.href;
-          let workspaceId = "";
-          const urlMatch = currentUrl.match(/\/client\/([^\/]+)/);
-          if (urlMatch && urlMatch[1]) {
-            workspaceId = urlMatch[1];
-          } else {
-            // Fallback to the default workspace ID if available in storage
-            chrome.storage.local.get('workspaceId', (data) => {
-              if (data && data.workspaceId) {
-                workspaceId = data.workspaceId;
-                console.log("Using stored workspace ID:", workspaceId);
-              }
-            });
-          }
-          
-          // Construct a proper URL for this specific channel
-          let messageUrl = currentUrl;
-          if (workspaceId && channelId) {
-            // For team channels with custom names, ensure we use the proper URL format
-            if (channelName && channelName.includes('team-')) {
-              console.log(`Constructing special URL for team channel: ${channelName}`);
-            }
-            messageUrl = `https://app.slack.com/client/${workspaceId}/${channelId}`;
-            console.log(`Constructed channel URL: ${messageUrl} for channel: ${channelName || channelId}`);
-          }
-  
-          chrome.runtime.sendMessage({
-                action: "mentionFound",
-                id: generateId(),
-                text: `You have unread messages in ${channelName || (isDM ? "a direct message" : "a channel")}`,
-                threadId: Date.now().toString(),
-                channelId: channelId,
-                isDM: isDM,
-                isMention: false, // Not a direct mention
-                messageUrl: messageUrl
-              });
-            }
-          }
-        });
-      }
-    });
-    
-    // Check for the red dot notification indicator
-    const redDots = document.querySelectorAll('.c-mention_badge, [data-qa="mentions_badge"]');
-    if (redDots.length > 0) {
-      console.log(`Found ${redDots.length} red dot notifications`);
-      
-      // Notify about mentions
-      if (Date.now() - lastCheckedTimestamp > 10000) { // Only if it's been at least 10 seconds
-        // Extract workspace ID from current URL
-        const currentUrl = window.location.href;
-        let workspaceId = "";
-        const urlMatch = currentUrl.match(/\/client\/([^\/]+)/);
-        if (urlMatch && urlMatch[1]) {
-          workspaceId = urlMatch[1];
-        }
-        
-        // For red dot notifications, we use the general channel
-        const generalChannelId = "general";
-        
-        // Construct a proper URL for the general channel
-        let messageUrl = currentUrl;
-        if (workspaceId && generalChannelId) {
-          messageUrl = `https://app.slack.com/client/${workspaceId}/${generalChannelId}`;
-        }
-      
-        chrome.runtime.sendMessage({
-          action: "mentionFound",
-          id: generateId(),
-          text: "You have unread mentions or messages in Slack",
-          threadId: Date.now().toString(),
-          channelId: "general",
-          isDM: false,
-          isMention: false, // Not a direct mention
-          messageUrl: messageUrl
-        });
-      }
-    }
-    
-    // Check if we're in a DM channel by URL and notify
-    if (isDMByUrl && Date.now() - lastCheckedTimestamp > 30000) { // Only check every 30 seconds
-      const channelId = window.location.pathname.split('/').pop();
-      
-      // Extract workspace ID from current URL
-      const currentUrl = window.location.href;
-      let workspaceId = "";
-      const urlMatch = currentUrl.match(/\/client\/([^\/]+)/);
-      if (urlMatch && urlMatch[1]) {
-        workspaceId = urlMatch[1];
-      }
-      
-      // Construct a proper URL for this specific DM channel
-      let messageUrl = currentUrl;
-      if (workspaceId && channelId) {
-        messageUrl = `https://app.slack.com/client/${workspaceId}/${channelId}`;
-      }
-    
-      chrome.runtime.sendMessage({
-        action: "mentionFound",
-        id: generateId(),
-        text: "You have a direct message conversation open",
-        threadId: Date.now().toString(),
-        channelId: channelId,
-        isDM: true,
-        isMention: false, // Not a direct mention
-        messageUrl: messageUrl
-      });
-    }
     
     lastCheckedTimestamp = currentTime;
 }
@@ -704,11 +515,30 @@ function generateId() {
 // Initial scan when the script loads
 setTimeout(() => {
   detectCurrentUser();
-  scanForMentions();
+  scanForMentions(); // This is automatic, so manualCheck defaults to false
 }, 5000);
 
 // Set up periodic scanning
-setInterval(scanForMentions, 30000); // Check every 30 seconds
+setInterval(scanForMentions, 30000); // Check every 30 seconds - automatic, so manualCheck defaults to false
+
+// Keep content script active and responsive
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    console.log("Slack tab became visible - resuming monitoring");
+    scanForMentions(true); // Force immediate check when tab becomes visible
+  }
+});
+
+// Periodic heartbeat to keep script alive and log activity
+setInterval(() => {
+  console.log("Content script heartbeat:", new Date().toLocaleTimeString());
+  
+  // Also check if we're still on a Slack page
+  if (window.location.href.includes('slack.com')) {
+    // Ensure we have workspace info
+    extractWorkspaceInfo();
+  }
+}, 60000); // Every minute
 
 // Function to check for username clues in the page when detection methods fail
 function checkForUsernameInPage() {
@@ -807,10 +637,11 @@ new MutationObserver(() => {
     // Set up more frequent scanning for any Slack channel 
     if (url.includes('/client/')) {
       console.log("Detected Slack client URL, setting up frequent scanning");
-      scanForMentions(); // Immediate scan after URL change
+      scanForMentions(); // Immediate scan after URL change - automatic, so manualCheck defaults to false
     }
   }
 }).observe(document, {subtree: true, childList: true});
 
 // Log that the content script has loaded
 console.log("Slack Mention Monitor content script loaded at", new Date().toLocaleTimeString());
+console.log("Extension configured for mentions and DMs only");

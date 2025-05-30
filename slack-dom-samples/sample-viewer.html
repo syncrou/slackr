@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slack DOM Sample Viewer</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .sample-loader {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .selector-tester {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .results {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .sample-frame {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .selector-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Consolas', monospace;
+            margin-bottom: 10px;
+        }
+        
+        .btn {
+            background: #4A154B;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+        
+        .btn:hover {
+            background: #6b2d5c;
+        }
+        
+        .btn-secondary {
+            background: #007cba;
+        }
+        
+        .btn-secondary:hover {
+            background: #005a87;
+        }
+        
+        .result-item {
+            background: #f8f9fa;
+            border-left: 4px solid #28a745;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .result-error {
+            border-left-color: #dc3545;
+        }
+        
+        .sample-info {
+            background: #e3f2fd;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
+        .quick-selectors {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .quick-selector {
+            background: #f1f3f4;
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            border: 1px solid #e0e0e0;
+        }
+        
+        .quick-selector:hover {
+            background: #e8eaed;
+        }
+        
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Slack DOM Sample Viewer</h1>
+            <p>Load and analyze captured Slack DOM samples to improve selector reliability.</p>
+        </div>
+
+        <div class="sample-loader">
+            <h3>📁 Load Sample</h3>
+            <input type="file" id="fileInput" accept=".json" style="margin-bottom: 10px;">
+            <button class="btn" onclick="loadSample()">Load Sample JSON</button>
+            <button class="btn btn-secondary" onclick="loadExample()">Load Example</button>
+            
+            <div id="sampleInfo" style="margin-top: 10px;"></div>
+            
+            <select id="sampleSelect" style="width: 100%; padding: 10px; margin-top: 10px; display: none;">
+                <option value="">Select a sample...</option>
+            </select>
+        </div>
+
+        <div class="selector-tester">
+            <h3>🎯 Selector Tester</h3>
+            <input type="text" id="selectorInput" class="selector-input" 
+                   placeholder="Enter CSS selector (e.g., .c-message__body)">
+            
+            <div class="quick-selectors">
+                <span class="quick-selector" onclick="testSelector('.c-message__body')">Messages</span>
+                <span class="quick-selector" onclick="testSelector('[data-stringify-at-mention]')">Mentions</span>
+                <span class="quick-selector" onclick="testSelector('.p-channel_sidebar__channel--im')">DMs</span>
+                <span class="quick-selector" onclick="testSelector('[data-qa=&quot;current-user-name&quot;]')">Username</span>
+                <span class="quick-selector" onclick="testSelector('.c-mention_badge')">Badges</span>
+                <span class="quick-selector" onclick="testSelector('[data-qa=&quot;message_content&quot;]')">Message Content</span>
+            </div>
+            
+            <button class="btn" onclick="testCurrentSelector()">Test Selector</button>
+            <button class="btn btn-secondary" onclick="testAllSelectors()">Test All Common Selectors</button>
+            <button class="btn btn-secondary" onclick="showSampleHTML()">View Raw HTML</button>
+        </div>
+
+        <div class="results">
+            <h3>📊 Results</h3>
+            <div id="results"></div>
+        </div>
+    </div>
+
+    <script>
+        let currentSample = null;
+        let allSamples = {};
+        
+        const commonSelectors = {
+            'Messages': ['.c-message__body', '.p-rich_text_section', '[data-qa="message_content"]'],
+            'Mentions': ['[data-stringify-at-mention]', '.c-mention_badge'],
+            'DM Indicators': ['.p-channel_sidebar__channel--im', '[data-qa="channel_header_channel_type_icon_dm"]'],
+            'User Elements': ['[data-qa="current-user-name"]', '[data-qa="name-in-profile-header"]'],
+            'Sidebar': ['.p-channel_sidebar', '[data-qa="channel_sidebar"]']
+        };
+
+        function loadSample() {
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Please select a JSON file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    allSamples = data;
+                    populateSampleSelect();
+                    displaySampleInfo(data);
+                } catch (error) {
+                    alert('Error parsing JSON: ' + error.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        function populateSampleSelect() {
+            const select = document.getElementById('sampleSelect');
+            select.innerHTML = '<option value="">Select a sample...</option>';
+            
+            Object.keys(allSamples).forEach(sampleName => {
+                const option = document.createElement('option');
+                option.value = sampleName;
+                option.textContent = sampleName;
+                select.appendChild(option);
+            });
+            
+            select.style.display = 'block';
+            select.onchange = function() {
+                if (this.value) {
+                    currentSample = allSamples[this.value];
+                    displayCurrentSample();
+                }
+            };
+        }
+        
+        function displaySampleInfo(samples) {
+            const info = document.getElementById('sampleInfo');
+            const sampleCount = Object.keys(samples).length;
+            
+            info.innerHTML = `
+                <div class="sample-info">
+                    <strong>Loaded ${sampleCount} sample(s):</strong><br>
+                    ${Object.keys(samples).join(', ')}
+                </div>
+            `;
+        }
+        
+        function displayCurrentSample() {
+            if (!currentSample) return;
+            
+            const info = document.getElementById('sampleInfo');
+            info.innerHTML = `
+                <div class="sample-info">
+                    <strong>Current Sample:</strong><br>
+                    <strong>URL:</strong> ${currentSample.url}<br>
+                    <strong>Timestamp:</strong> ${currentSample.timestamp}<br>
+                    <strong>Title:</strong> ${currentSample.title}
+                </div>
+            `;
+        }
+        
+        function testSelector(selector) {
+            document.getElementById('selectorInput').value = selector;
+            testCurrentSelector();
+        }
+        
+        function testCurrentSelector() {
+            const selector = document.getElementById('selectorInput').value;
+            if (!selector) {
+                alert('Please enter a selector');
+                return;
+            }
+            
+            if (!currentSample) {
+                alert('Please load and select a sample first');
+                return;
+            }
+            
+            try {
+                // Create a temporary DOM from the sample HTML
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = currentSample.html;
+                
+                const elements = tempDiv.querySelectorAll(selector);
+                
+                displayResults([{
+                    selector: selector,
+                    count: elements.length,
+                    elements: Array.from(elements).slice(0, 5).map(el => ({
+                        tagName: el.tagName,
+                        textContent: el.textContent.substring(0, 100),
+                        innerHTML: el.innerHTML.substring(0, 200)
+                    }))
+                }]);
+                
+            } catch (error) {
+                displayResults([{
+                    selector: selector,
+                    error: error.message
+                }]);
+            }
+        }
+        
+        function testAllSelectors() {
+            if (!currentSample) {
+                alert('Please load and select a sample first');
+                return;
+            }
+            
+            const results = [];
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentSample.html;
+            
+            Object.entries(commonSelectors).forEach(([category, selectors]) => {
+                selectors.forEach(selector => {
+                    try {
+                        const elements = tempDiv.querySelectorAll(selector);
+                        results.push({
+                            category: category,
+                            selector: selector,
+                            count: elements.length,
+                            elements: Array.from(elements).slice(0, 3).map(el => ({
+                                textContent: el.textContent.substring(0, 50)
+                            }))
+                        });
+                    } catch (error) {
+                        results.push({
+                            category: category,
+                            selector: selector,
+                            error: error.message
+                        });
+                    }
+                });
+            });
+            
+            displayResults(results);
+        }
+        
+        function displayResults(results) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '';
+            
+            results.forEach(result => {
+                const div = document.createElement('div');
+                div.className = result.error ? 'result-item result-error' : 'result-item';
+                
+                if (result.error) {
+                    div.innerHTML = `
+                        <strong>${result.selector}</strong><br>
+                        <span style="color: #dc3545;">Error: ${result.error}</span>
+                    `;
+                } else {
+                    div.innerHTML = `
+                        <strong>${result.category ? result.category + ': ' : ''}${result.selector}</strong><br>
+                        Found: <strong>${result.count}</strong> element(s)<br>
+                        ${result.elements && result.elements.length > 0 ? 
+                          '<details><summary>Sample elements</summary><pre>' + 
+                          JSON.stringify(result.elements, null, 2) + '</pre></details>' : ''}
+                    `;
+                }
+                
+                resultsDiv.appendChild(div);
+            });
+        }
+        
+        function showSampleHTML() {
+            if (!currentSample) {
+                alert('Please load and select a sample first');
+                return;
+            }
+            
+            const newWindow = window.open('', '_blank');
+            newWindow.document.write(currentSample.html);
+            newWindow.document.close();
+        }
+        
+        function loadExample() {
+            // Create a minimal example for demonstration
+            const example = {
+                'example-channel': {
+                    url: 'https://app.slack.com/client/E030G10V24F/C06M9SL8JM6',
+                    timestamp: new Date().toISOString(),
+                    title: 'Example Channel - Slack',
+                    html: `
+                        <html>
+                        <body>
+                            <div class="c-message__body">Hello @username, this is a test message</div>
+                            <div class="p-rich_text_section">Another message here</div>
+                            <div data-qa="message_content">Message with data attribute</div>
+                            <span data-stringify-at-mention="@username">@username</span>
+                            <div class="c-mention_badge">1</div>
+                        </body>
+                        </html>
+                    `
+                }
+            };
+            
+            allSamples = example;
+            populateSampleSelect();
+            displaySampleInfo(example);
+        }
+    </script>
+</body>
+</html> 

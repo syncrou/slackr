@@ -3,26 +3,25 @@ console.log("Gemini content script loaded");
 
 // Listen for messages from the extension
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "getGeminiResponses") {
+  if (message.action === "ping") {
+    sendResponse({success: true, timestamp: Date.now()});
+    return true;
+  }
+  else if (message.action === "getGeminiResponses") {
     console.log("Received request for Gemini responses");
+    console.log("Message text:", message.text);
     
-    // Check if we're on the Gemini page
-    if (!window.location.href.includes("gemini.google.com/app")) {
-      sendResponse({ error: "Not on Gemini page" });
-      return true;
-    }
-    
-    // Process the request
     getGeminiResponses(message.text)
       .then(responses => {
-        sendResponse({ responses });
+        console.log("Gemini responses generated:", responses);
+        sendResponse({ responses: responses });
       })
       .catch(error => {
+        console.error("Error generating Gemini responses:", error);
         sendResponse({ error: error.message });
       });
-    
-    // Return true to indicate we'll respond asynchronously
-    return true;
+      
+    return true; // Indicates we'll send a response asynchronously
   }
 });
 

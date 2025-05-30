@@ -16,6 +16,36 @@
       padding: 10px;
       text-align: center;
     }
+    .notices {
+      padding: 0 10px;
+    }
+    .notice {
+      padding: 8px 12px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-size: 0.9em;
+      display: none;
+    }
+    .notice.success {
+      background-color: #d4edda;
+      border: 1px solid #c3e6cb;
+      color: #155724;
+    }
+    .notice.error {
+      background-color: #f8d7da;
+      border: 1px solid #f5c6cb;
+      color: #721c24;
+    }
+    .notice.info {
+      background-color: #d1ecf1;
+      border: 1px solid #bee5eb;
+      color: #0c5460;
+    }
+    .notice.warning {
+      background-color: #fff3cd;
+      border: 1px solid #ffeaa7;
+      color: #856404;
+    }
     .content {
       padding: 10px;
       overflow-y: auto;
@@ -27,10 +57,13 @@
       padding: 10px;
       margin-bottom: 10px;
       position: relative;
+      transition: all 0.2s ease;
     }
     .mention:hover {
       background-color: #f9f9f9;
       border-color: #4A154B;
+      transform: translateY(-1px);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     .mention::after {
       content: "🔗";
@@ -43,8 +76,43 @@
     .mention:hover::after {
       opacity: 1;
     }
+    .mention.direct-mention {
+      border-left: 4px solid #e01e5a;
+      background-color: #fef7f7;
+    }
+    .mention.direct-message {
+      border-left: 4px solid #36c5f0;
+      background-color: #f7fcff;
+    }
+    .mention.channel-activity {
+      border-left: 4px solid #2eb67d;
+      background-color: #f7fef9;
+    }
     .mention-text {
       margin-bottom: 10px;
+      line-height: 1.4;
+    }
+    .mention-type {
+      font-size: 0.7em;
+      font-weight: bold;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .mention-type.direct-mention {
+      color: #e01e5a;
+    }
+    .mention-type.direct-message {
+      color: #36c5f0;
+    }
+    .mention-type.channel-activity {
+      color: #2eb67d;
+    }
+    .channel-name {
+      font-size: 0.8em;
+      color: #888;
+      margin-bottom: 5px;
+      font-weight: 500;
     }
     .timestamp {
       color: #888;
@@ -59,46 +127,35 @@
       color: white;
       border: none;
       padding: 5px 10px;
-      margin: 5px 0;
+      margin: 5px 5px 5px 0;
       border-radius: 4px;
       cursor: pointer;
-      width: 100%;
-      text-align: left;
+      font-size: 0.9em;
+      transition: background-color 0.2s ease;
     }
     .response-btn:hover {
       background-color: #611f69;
+    }
+    .response-btn.view-channel {
+      background-color: #2eb67d;
+    }
+    .response-btn.view-channel:hover {
+      background-color: #1a9c5a;
     }
     .no-mentions {
       text-align: center;
       color: #888;
       margin-top: 20px;
     }
-    .settings {
+    .main-controls {
       margin-top: 20px;
       padding-top: 10px;
       border-top: 1px solid #ddd;
     }
-    .settings label {
-      display: block;
-      margin-bottom: 5px;
-    }
-    .settings input {
-      width: 100%;
-      padding: 5px;
-      margin-bottom: 10px;
-    }
-    .settings button {
-      background-color: #4A154B;
-      color: white;
-      border: none;
-      padding: 5px 10px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    .action-buttons {
+    .main-controls .action-buttons {
       margin-bottom: 15px;
     }
-    .action-buttons button {
+    .main-controls .action-buttons button {
       background-color: #4A154B;
       color: white;
       border: none;
@@ -108,8 +165,121 @@
       width: 100%;
       margin-bottom: 10px;
     }
-    .action-buttons button:hover {
+    .main-controls .action-buttons button:hover {
       background-color: #611f69;
+    }
+    .username-display {
+      margin-bottom: 15px;
+    }
+    .username-display label {
+      display: block;
+      margin-bottom: 5px;
+    }
+    .settings-toggle {
+      background-color: #007cba;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      width: 100%;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .settings-toggle:hover {
+      background-color: #005a87;
+    }
+    .settings-toggle .arrow {
+      transition: transform 0.3s ease;
+    }
+    .settings-toggle .arrow.expanded {
+      transform: rotate(90deg);
+    }
+    .settings-panel {
+      display: none;
+      background-color: #f8f9fa;
+      border: 1px solid #dee2e6;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 10px;
+    }
+    .settings-panel.expanded {
+      display: block;
+    }
+    .settings-section {
+      margin-bottom: 20px;
+    }
+    .settings-section:last-child {
+      margin-bottom: 0;
+    }
+    .settings-section h4 {
+      margin: 0 0 10px 0;
+      color: #333;
+      font-size: 14px;
+    }
+    .settings-section label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    .settings-section input, .settings-section select {
+      width: 100%;
+      padding: 5px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    .settings-section button {
+      background-color: #4A154B;
+      color: white;
+      border: none;
+      padding: 5px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .settings-section button:hover {
+      background-color: #611f69;
+    }
+    .ai-status {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 4px;
+      border: 1px solid;
+    }
+    .ai-status.gemini-available {
+      background-color: #e8f5e9;
+      border-color: #c8e6c9;
+    }
+    .ai-status.gemini-active {
+      background-color: #e8f5e9;
+      border-color: #c8e6c9;
+    }
+    .ai-status.gemini-unavailable {
+      background-color: #f8f9fa;
+      border-color: #dee2e6;
+      color: #6c757d;
+    }
+    .ai-status p {
+      margin: 0 0 10px 0;
+    }
+    .ai-status button {
+      background-color: #4285F4;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .ai-status button.stop {
+      background-color: #EA4335;
+    }
+    .help-text {
+      font-size: 0.8em;
+      color: #666;
+      margin-top: 5px;
     }
   </style>
 </head>
@@ -117,50 +287,85 @@
   <div class="header">
     <h2>Slack Mention Monitor</h2>
   </div>
+  
+  <div class="notices">
+    <div id="notice-success" class="notice success"></div>
+    <div id="notice-error" class="notice error"></div>
+    <div id="notice-info" class="notice info"></div>
+    <div id="notice-warning" class="notice warning"></div>
+  </div>
+  
   <div class="content" id="mentions-container">
     <div class="no-mentions" id="no-mentions">
       No mentions found yet. The extension will check periodically.
     </div>
     <!-- Mentions will be added here dynamically -->
   </div>
-  <div class="settings">
-    <h3>Settings</h3>
+  
+  <div class="main-controls">
     <div class="action-buttons">
       <button id="check-now">Check for Mentions Now</button>
     </div>
     
     <div class="username-display">
-      <label>Your Slack Username: <span style="font-size: 0.8em; color: #888;">(from specific channel)</span></label>
+      <label>Your Slack Username: <span style="font-size: 0.8em; color: #888;">(from configured channel)</span></label>
       <div id="username-display" style="padding: 5px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; background-color: #f9f9f9;">Loading...</div>
       <div style="font-size: 0.8em; color: #888; margin-top: -5px; margin-bottom: 10px;">
-        Channel: <a href="https://app.slack.com/client/T3V50FNAZ/D02S3GX2U56" target="_blank">https://app.slack.com/client/T3V50FNAZ/D02S3GX2U56</a>
+        Channel: <span id="current-slack-url">Not configured</span>
+      </div>
+      <div id="background-status" style="font-size: 0.8em; margin-bottom: 10px; padding: 5px; border-radius: 4px;">
+        <span id="background-status-text">Checking background monitoring...</span>
       </div>
     </div>
     
-    <h4>AI Integration</h4>
-    <div id="gemini-available" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #e8f5e9; border-radius: 4px; border: 1px solid #c8e6c9;">
-      <p style="margin: 0 0 10px 0;">Gemini is available in another tab!</p>
-      <button id="use-gemini" style="background-color: #4285F4; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Use Gemini for Responses</button>
-    </div>
+    <button class="settings-toggle" id="settings-toggle">
+      <span>Settings</span>
+      <span class="arrow" id="settings-arrow">▶</span>
+    </button>
     
-    <div id="gemini-active" style="display: none; margin-bottom: 15px; padding: 10px; background-color: #e8f5e9; border-radius: 4px; border: 1px solid #c8e6c9;">
-      <p style="margin: 0 0 10px 0;">Using Gemini for AI responses</p>
-      <button id="stop-using-gemini" style="background-color: #EA4335; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer;">Stop Using Gemini</button>
-    </div>
-    
-    <div id="api-settings" style="display: block;">
-      <label for="api-type">AI Provider:</label>
-      <select id="api-type">
-        <option value="openai">OpenAI</option>
-        <option value="claude">Claude</option>
-      </select>
+    <div class="settings-panel" id="settings-panel">
+      <div class="settings-section">
+        <h4>Slack Configuration</h4>
+        <label for="slack-url">Slack Channel URL:</label>
+        <input type="url" id="slack-url" placeholder="https://app.slack.com/client/WORKSPACE/CHANNEL">
+        <div class="help-text">Enter the full URL of the Slack channel to monitor for your username</div>
+        <button id="save-slack-url">Save Slack URL</button>
+      </div>
       
-      <label for="api-key">API Key:</label>
-      <input type="password" id="api-key" placeholder="Enter your API key">
-      
-      <button id="save-settings">Save</button>
+      <div class="settings-section">
+        <h4>AI Integration</h4>
+        
+        <div id="gemini-status-check" class="ai-status gemini-unavailable">
+          <p id="gemini-status-text">Checking for Gemini availability...</p>
+          <button id="check-gemini" style="background-color: #4285F4;">Check Gemini</button>
+        </div>
+        
+        <div id="gemini-available" class="ai-status gemini-available" style="display: none;">
+          <p>Gemini is available in another tab!</p>
+          <button id="use-gemini">Use Gemini for Responses</button>
+        </div>
+        
+        <div id="gemini-active" class="ai-status gemini-active" style="display: none;">
+          <p>Using Gemini for AI responses</p>
+          <button id="stop-using-gemini" class="stop">Stop Using Gemini</button>
+        </div>
+        
+        <div id="api-settings" style="display: block;">
+          <label for="api-type">AI Provider:</label>
+          <select id="api-type">
+            <option value="openai">OpenAI</option>
+            <option value="claude">Claude</option>
+          </select>
+          
+          <label for="api-key">API Key:</label>
+          <input type="password" id="api-key" placeholder="Enter your API key">
+          
+          <button id="save-api-settings">Save API Settings</button>
+        </div>
+      </div>
     </div>
   </div>
+  
   <script src="popup.js"></script>
 </body>
 </html>

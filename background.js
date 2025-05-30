@@ -1,7 +1,7 @@
 // Set up alarm for periodic checking
 chrome.runtime.onInstalled.addListener(() => {
-  // Check every 5 minutes
-  chrome.alarms.create('checkSlackMentions', { periodInMinutes: 5 });
+  console.log("Extension installed/updated - setting up monitoring");
+  setupPeriodicChecking();
   
   // Initialize storage
   chrome.storage.local.set({ 
@@ -10,6 +10,45 @@ chrome.runtime.onInstalled.addListener(() => {
     apiKey: "",
     useGemini: false
     // No hardcoded workspace or channel IDs - will be detected dynamically
+  });
+});
+
+// Also set up monitoring when the service worker starts up
+chrome.runtime.onStartup.addListener(() => {
+  console.log("Chrome started - resuming monitoring");
+  setupPeriodicChecking();
+});
+
+// Function to set up periodic checking
+function setupPeriodicChecking() {
+  // Clear any existing alarms first
+  chrome.alarms.clear('checkSlackMentions');
+  
+  // Check every 2 minutes (reduced from 5 for more responsive monitoring)
+  chrome.alarms.create('checkSlackMentions', { periodInMinutes: 2 });
+  console.log("Periodic checking alarm created (every 2 minutes)");
+  
+  // Do an immediate check
+  setTimeout(checkForMentions, 2000);
+}
+
+// Keep the service worker alive by periodically checking alarms
+setInterval(() => {
+  chrome.alarms.get('checkSlackMentions', (alarm) => {
+    if (!alarm) {
+      console.log("Alarm was lost, recreating...");
+      setupPeriodicChecking();
+    }
+  });
+}, 60000); // Check every minute
+
+// Check for mentions when Slack tabs become active
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  chrome.tabs.get(activeInfo.tabId, (tab) => {
+    if (tab.url && tab.url.includes('slack.com')) {
+      console.log("Slack tab activated - checking mentions");
+      checkForMentions();
+    }
   });
 });
 
@@ -28,22 +67,34 @@ function checkForMentions() {
       
       // First, get workspace/channel info from the first active Slack tab
       try {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "getWorkspaceInfo"}, (response) => {
-          // Handle any runtime error
+        // Check if content script is ready first
+        chrome.tabs.sendMessage(tabs[0].id, {action: "ping"}, (pingResponse) => {
           if (chrome.runtime.lastError) {
-            console.log("Error getting workspace info:", chrome.runtime.lastError.message);
-          } else if (response && response.workspaceId) {
-            console.log(`Got workspace info: ${response.workspaceId}/${response.channelId}`);
-            
-            // Store the workspace/channel info for future use
-            chrome.storage.local.set({
-              currentWorkspaceId: response.workspaceId,
-              currentChannelId: response.channelId
-            });
+            console.log("Content script not ready, injecting and retrying...");
+            injectContentScriptIfNeeded(tabs[0].id, 'content.js');
+            // Continue with scanning other tabs
+            scanAllSlackTabs(tabs);
+            return;
           }
           
-          // Continue with sending checkMentions to all tabs
-          scanAllSlackTabs(tabs);
+          // Content script is ready, get workspace info
+          chrome.tabs.sendMessage(tabs[0].id, {action: "getWorkspaceInfo"}, (response) => {
+            // Handle any runtime error
+            if (chrome.runtime.lastError) {
+              console.log("Error getting workspace info:", chrome.runtime.lastError.message);
+            } else if (response && response.workspaceId) {
+              console.log(`Got workspace info: ${response.workspaceId}/${response.channelId}`);
+              
+              // Store the workspace/channel info for future use
+              chrome.storage.local.set({
+                currentWorkspaceId: response.workspaceId,
+                currentChannelId: response.channelId
+              });
+            }
+            
+            // Continue with sending checkMentions to all tabs
+            scanAllSlackTabs(tabs);
+          });
         });
       } catch (e) {
         console.log("Exception getting workspace info:", e.message);
@@ -61,25 +112,70 @@ function scanAllSlackTabs(tabs) {
   // Send message to all Slack tabs - using a fire-and-forget approach for checkMentions
   tabs.forEach(tab => {
     try {
-      // We don't expect a response from the content script for checkMentions
-      // so don't provide a callback - this avoids the "message channel closed" error
-      chrome.tabs.sendMessage(tab.id, {action: "checkMentions"});
-      
-      // Log any runtime error that might occur, but don't wait for a response
-      const error = chrome.runtime.lastError;
-      if (error) {
-        console.log("Error sending message to tab (non-blocking):", error.message || "Unknown error");
-      }
+      // Check if tab is ready and content script is loaded
+      chrome.tabs.sendMessage(tab.id, {action: "ping"}, (response) => {
+        if (chrome.runtime.lastError) {
+          console.log(`Tab ${tab.id} content script not ready:`, chrome.runtime.lastError.message);
+          // Try to inject content script if it's not loaded
+          if (tab.url && tab.url.includes('slack.com')) {
+            injectContentScriptIfNeeded(tab.id, 'content.js');
+          }
+        } else {
+          // Content script is ready, send the actual message
+          chrome.tabs.sendMessage(tab.id, {action: "checkMentions"}, () => {
+            // Ignore any response errors for this fire-and-forget message
+            if (chrome.runtime.lastError) {
+              console.log(`Non-critical error sending checkMentions to tab ${tab.id}:`, chrome.runtime.lastError.message);
+            }
+          });
+        }
+      });
     } catch (e) {
       console.log("Exception when sending message to tab:", e.message);
     }
   });
 }
 
+// Function to inject content script if needed
+function injectContentScriptIfNeeded(tabId, scriptFile) {
+  try {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: [scriptFile]
+    }, () => {
+      if (chrome.runtime.lastError) {
+        console.log(`Could not inject ${scriptFile}:`, chrome.runtime.lastError.message);
+      } else {
+        console.log(`Successfully injected ${scriptFile} into tab ${tabId}`);
+        // Wait a bit then try sending the message again
+        setTimeout(() => {
+          chrome.tabs.sendMessage(tabId, {action: "checkMentions"}, () => {
+            if (chrome.runtime.lastError) {
+              console.log(`Still couldn't communicate after injection:`, chrome.runtime.lastError.message);
+            }
+          });
+        }, 1000);
+      }
+    });
+  } catch (e) {
+    console.log("Exception injecting content script:", e.message);
+  }
+}
+
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "checkMentionsManually") {
+  if (message.action === "ping") {
+    sendResponse({success: true, timestamp: Date.now()});
+    return true;
+  }
+  else if (message.action === "checkMentionsManually") {
+    console.log("Manual mention check requested");
     checkForMentions();
+    sendResponse({success: true});
+    return true;
+  }
+  else if (message.action === "updateBadge") {
+    updateBadge(message.count);
     sendResponse({success: true});
     return true;
   }
@@ -94,12 +190,20 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   }
   else if (message.action === "mentionFound") {
-    // Create notification
+    // Create notification with appropriate title based on type
+    let notificationTitle = 'New Mention in Slack';
+    let notificationMessage = `You were mentioned in a conversation: "${message.text.substring(0, 100)}..."`;
+    
+    if (message.isDM) {
+      notificationTitle = 'New Direct Message in Slack';
+      notificationMessage = `New direct message: "${message.text.substring(0, 100)}..."`;
+    }
+    
     chrome.notifications.create({
       type: 'basic',
       iconUrl: 'images/icon128.png',
-      title: 'New Mention in Slack',
-      message: `You were mentioned in a conversation: "${message.text.substring(0, 100)}..."`,
+      title: notificationTitle,
+      message: notificationMessage,
       buttons: [
         { title: 'View' }
       ],
@@ -108,32 +212,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Store the mention and generate responses asynchronously
     (async () => {
-      // Only generate responses if it's an actual mention, not just an unread message
-      const responses = message.isMention ? await generateResponses(message.text) : [];
-      
-      // Check if this message ID already exists in storage
-      chrome.storage.local.get('mentions', (data) => {
-        const mentions = data.mentions || [];
+      try {
+        // Generate responses for mentions and DMs only
+        const responses = await generateResponses(message.text, false, null);
         
-        // Check if this message already exists
-        const existingIndex = mentions.findIndex(m => m.id === message.id);
-        if (existingIndex >= 0) {
-          console.log("Message already exists in storage, skipping");
-          return;
-        }
-        
-        mentions.push({
-          id: message.id,
-          text: message.text,
-          timestamp: new Date().toISOString(),
-          threadId: message.threadId,
-          channelId: message.channelId,
-          messageUrl: message.messageUrl || null,
-          isMention: message.isMention || false,
-          suggestedResponses: responses
+        // Check if this message ID already exists in storage
+        chrome.storage.local.get('mentions', (data) => {
+          const mentions = data.mentions || [];
+          
+          // Check if this message already exists
+          const existingIndex = mentions.findIndex(m => m.id === message.id);
+          if (existingIndex >= 0) {
+            console.log("Message already exists in storage, skipping");
+            return;
+          }
+          
+          mentions.push({
+            id: message.id,
+            text: message.text,
+            timestamp: new Date().toISOString(),
+            threadId: message.threadId,
+            channelId: message.channelId,
+            messageUrl: message.messageUrl || null,
+            isMention: message.isMention || false,
+            isDM: message.isDM || false,
+            channelName: message.channelName || null,
+            suggestedResponses: responses
+          });
+          chrome.storage.local.set({ mentions: mentions }, () => {
+            // Update badge with unread count
+            updateBadge(mentions.length);
+          });
         });
-        chrome.storage.local.set({ mentions: mentions });
-      });
+      } catch (error) {
+        console.error("Error in mentionFound handler:", error);
+        // Still store the mention without responses
+        chrome.storage.local.get('mentions', (data) => {
+          const mentions = data.mentions || [];
+          
+          // Check if this message already exists
+          const existingIndex = mentions.findIndex(m => m.id === message.id);
+          if (existingIndex >= 0) {
+            console.log("Message already exists in storage, skipping");
+            return;
+          }
+          
+          mentions.push({
+            id: message.id,
+            text: message.text,
+            timestamp: new Date().toISOString(),
+            threadId: message.threadId,
+            channelId: message.channelId,
+            messageUrl: message.messageUrl || null,
+            isMention: message.isMention || false,
+            isDM: message.isDM || false,
+            channelName: message.channelName || null,
+            suggestedResponses: []
+          });
+          chrome.storage.local.set({ mentions: mentions }, () => {
+            // Update badge with unread count
+            updateBadge(mentions.length);
+          });
+        });
+      }
     })();
   }
   
@@ -142,7 +283,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 // Generate suggested responses based on message content
-async function generateResponses(text) {
+async function generateResponses(text, isChannelActivity = false, channelName = null) {
   // First check if we have API keys configured
   const data = await chrome.storage.local.get(['apiType', 'apiKey', 'useGemini']);
   
@@ -201,30 +342,92 @@ async function getAIResponses(text, apiType, apiKey) {
 // Get responses from Gemini by sending a message to the content script in the Gemini tab
 async function getGeminiResponses(text) {
   return new Promise((resolve, reject) => {
-    // Find Gemini tabs
-    chrome.tabs.query({url: "https://gemini.google.com/app/*"}, (tabs) => {
-      if (tabs.length === 0) {
-        reject(new Error("No Gemini tab found. Please open Gemini in another tab."));
-        return;
-      }
-      
-      // Send message to the first Gemini tab
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "getGeminiResponses",
-        text: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`
-      }, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error("Error communicating with Gemini tab: " + chrome.runtime.lastError.message));
-          return;
+    // Try multiple URL patterns to find Gemini tabs
+    const geminiUrlPatterns = [
+      "https://gemini.google.com/app/*",
+      "https://gemini.google.com/*"
+    ];
+    
+    let foundGemini = false;
+    let checkedPatterns = 0;
+    
+    geminiUrlPatterns.forEach(pattern => {
+      chrome.tabs.query({url: pattern}, (tabs) => {
+        checkedPatterns++;
+        
+        if (tabs.length > 0 && !foundGemini) {
+          foundGemini = true;
+          console.log(`Found ${tabs.length} Gemini tab(s) with pattern: ${pattern}`);
+          
+          // Check if Gemini content script is ready
+          chrome.tabs.sendMessage(tabs[0].id, {action: "ping"}, (pingResponse) => {
+            if (chrome.runtime.lastError) {
+              console.log("Gemini content script not ready, injecting...");
+              injectContentScriptIfNeeded(tabs[0].id, 'gemini-content.js');
+              setTimeout(() => {
+                // Try again after injection
+                sendGeminiRequest(tabs[0].id, text, resolve, reject);
+              }, 2000);
+            } else {
+              // Content script is ready
+              sendGeminiRequest(tabs[0].id, text, resolve, reject);
+            }
+          });
         }
         
-        if (response && response.responses) {
-          resolve(response.responses);
-        } else {
-          reject(new Error("Invalid response from Gemini tab"));
+        // If this is the last pattern check and no Gemini found
+        if (checkedPatterns === geminiUrlPatterns.length && !foundGemini) {
+          // Also try a more general search for any tab with "gemini" in the URL
+          chrome.tabs.query({}, (allTabs) => {
+            const geminiTabs = allTabs.filter(tab => 
+              tab.url && tab.url.includes('gemini.google.com')
+            );
+            
+            if (geminiTabs.length > 0) {
+              console.log(`Found ${geminiTabs.length} Gemini tab(s) via general search:`, geminiTabs.map(t => t.url));
+              
+              // Check if Gemini content script is ready
+              chrome.tabs.sendMessage(geminiTabs[0].id, {action: "ping"}, (pingResponse) => {
+                if (chrome.runtime.lastError) {
+                  console.log("Gemini content script not ready, injecting...");
+                  injectContentScriptIfNeeded(geminiTabs[0].id, 'gemini-content.js');
+                  setTimeout(() => {
+                    // Try again after injection
+                    sendGeminiRequest(geminiTabs[0].id, text, resolve, reject);
+                  }, 2000);
+                } else {
+                  // Content script is ready
+                  sendGeminiRequest(geminiTabs[0].id, text, resolve, reject);
+                }
+              });
+            } else {
+              reject(new Error("No Gemini tab found. Please open Gemini in another tab."));
+            }
+          });
         }
       });
     });
+  });
+}
+
+// Helper function to send Gemini request
+function sendGeminiRequest(tabId, text, resolve, reject) {
+  chrome.tabs.sendMessage(tabId, {
+    action: "getGeminiResponses",
+    text: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`,
+  }, (response) => {
+    if (chrome.runtime.lastError) {
+      reject(new Error("Error communicating with Gemini tab: " + chrome.runtime.lastError.message));
+      return;
+    }
+    
+    if (response && response.responses) {
+      resolve(response.responses);
+    } else if (response && response.error) {
+      reject(new Error("Gemini error: " + response.error));
+    } else {
+      reject(new Error("Invalid response from Gemini tab"));
+    }
   });
 }
 
@@ -240,12 +443,8 @@ async function getOpenAIResponses(text, apiKey) {
       model: 'gpt-3.5-turbo',
       messages: [
         {
-          role: 'system',
-          content: 'You are an assistant helping to generate 4 brief, professional responses to a Slack message where the user was mentioned. Each response should be concise (under 100 characters) and appropriate for a workplace setting.'
-        },
-        {
           role: 'user',
-          content: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}"`
+          content: text
         }
       ],
       temperature: 0.7,
@@ -283,7 +482,7 @@ async function getClaudeResponses(text, apiKey) {
       messages: [
         {
           role: 'user',
-          content: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`
+          content: text
         }
       ]
     })
@@ -303,3 +502,21 @@ async function getClaudeResponses(text, apiKey) {
   // Return up to 4 responses
   return responses.slice(0, 4);
 }
+
+// Function to update the extension badge
+function updateBadge(count) {
+  if (count > 0) {
+    chrome.action.setBadgeText({
+      text: count.toString()
+    });
+    chrome.action.setBadgeBackgroundColor({color: '#FF0000'});
+  } else {
+    chrome.action.setBadgeText({text: ''});
+  }
+}
+
+// Update badge when extension starts
+chrome.storage.local.get('mentions', (data) => {
+  const mentions = data.mentions || [];
+  updateBadge(mentions.length);
+});
