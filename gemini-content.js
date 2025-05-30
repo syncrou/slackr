@@ -10,20 +10,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   else if (message.action === "getGeminiResponses") {
     console.log("Received request for Gemini responses");
     console.log("Message text:", message.text);
-    console.log("Is channel activity:", message.isChannelActivity);
-    console.log("Channel name:", message.channelName);
     
-    // Prepare the appropriate prompt based on message type
-    let promptText;
-    if (message.isChannelActivity && message.channelName) {
-      // Special manager prompt for channel activity
-      promptText = `I am a manager at a tech firm. This channel is (#${message.channelName}) and this text was just brought up that may include me. Put together a potential answer for this that will provide the right mix of knowledge on the subject at hand: "${message.text}"`;
-    } else {
-      // Regular mention prompt
-      promptText = message.text;
-    }
-    
-    getGeminiResponses(promptText)
+    getGeminiResponses(message.text)
       .then(responses => {
         console.log("Gemini responses generated:", responses);
         sendResponse({ responses: responses });

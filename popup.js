@@ -368,8 +368,6 @@ function loadMentions() {
         mentionElement.style.borderLeft = '4px solid #e01e5a'; // Red for direct mentions
       } else if (mention.isDM) {
         mentionElement.style.borderLeft = '4px solid #36c5f0'; // Blue for DMs
-      } else {
-        mentionElement.style.borderLeft = '4px solid #2eb67d'; // Green for channel activity
       }
       
       // Add click handler to the mention element if we have a message URL
@@ -409,9 +407,6 @@ function loadMentions() {
       } else if (mention.isDM) {
         typeElement.textContent = '💬 Direct Message';
         typeElement.style.color = '#36c5f0';
-      } else {
-        typeElement.textContent = '📢 Channel Activity';
-        typeElement.style.color = '#2eb67d';
       }
       
       // Add channel name if available
@@ -431,62 +426,18 @@ function loadMentions() {
       const responsesElement = document.createElement('div');
       responsesElement.className = 'responses';
       
-      // Add suggested responses for mentions AND channel activity
+      // Add suggested responses for mentions and DMs only
       if (mention.suggestedResponses && mention.suggestedResponses.length > 0) {
         mention.suggestedResponses.forEach(response => {
           const responseButton = document.createElement('button');
           responseButton.className = 'response-btn';
           responseButton.textContent = response;
           
-          // For channel activity, use different styling
-          if (!mention.isMention && !mention.isDM) {
-            responseButton.style.backgroundColor = '#2eb67d';
-            responseButton.title = `Respond to channel activity in #${mention.channelName}`;
-          }
-          
           responseButton.addEventListener('click', () => {
-            // For channel activity, we might want to open the channel first
-            if (!mention.isMention && !mention.isDM && mention.messageUrl) {
-              openSlackMessage(mention.messageUrl);
-              setTimeout(() => {
-                sendResponse(mention.threadId, response);
-              }, 1000); // Give time for channel to load
-            } else {
-              sendResponse(mention.threadId, response);
-            }
+            sendResponse(mention.threadId, response);
           });
           responsesElement.appendChild(responseButton);
         });
-      } else if (!mention.isMention && !mention.isDM) {
-        // For channel activity without responses yet, show a "Generate Response" button
-        const generateButton = document.createElement('button');
-        generateButton.className = 'response-btn';
-        generateButton.textContent = 'Generate AI Response';
-        generateButton.style.backgroundColor = '#2eb67d';
-        generateButton.addEventListener('click', () => {
-          generateButton.textContent = 'Generating...';
-          generateButton.disabled = true;
-          
-          // Trigger AI response generation for this channel activity
-          chrome.runtime.sendMessage({
-            action: "generateChannelResponse",
-            text: mention.text,
-            channelName: mention.channelName,
-            mentionId: mention.id
-          }, (response) => {
-            if (response && response.success) {
-              // Reload mentions to show new responses
-              setTimeout(() => {
-                loadMentions();
-              }, 1000);
-            } else {
-              generateButton.textContent = 'Generate AI Response';
-              generateButton.disabled = false;
-              showNotice("Error generating response: " + (response ? response.error : "Unknown error"), 'error');
-            }
-          });
-        });
-        responsesElement.appendChild(generateButton);
       }
       
       mentionElement.appendChild(typeElement);
@@ -499,12 +450,10 @@ function loadMentions() {
     
     if (mentions.length > 0) {
       const directMentions = mentions.filter(m => m.isMention).length;
-      const channelActivity = mentions.filter(m => !m.isMention && !m.isDM).length;
       const directMessages = mentions.filter(m => m.isDM).length;
       
       let noticeText = `Found ${mentions.length} notification(s)`;
       if (directMentions > 0) noticeText += ` (${directMentions} mention${directMentions > 1 ? 's' : ''})`;
-      if (channelActivity > 0) noticeText += ` (${channelActivity} channel${channelActivity > 1 ? 's' : ''})`;
       if (directMessages > 0) noticeText += ` (${directMessages} DM${directMessages > 1 ? 's' : ''})`;
       
       showNotice(noticeText, 'info', 3000);
@@ -748,26 +697,6 @@ function updateBadge(count) {
     count: count
   });
 }
-
-// Debug function to check background activity
-function debugBackgroundActivity() {
-  chrome.storage.local.get(['mentions'], (data) => {
-    console.log("Stored mentions:", data.mentions);
-    console.log("Last mention timestamp:", 
-      data.mentions?.length > 0 ? 
-      new Date(data.mentions[data.mentions.length - 1].timestamp) : 
-      "None"
-    );
-    
-    // Check if alarms are active
-    chrome.alarms.getAll((alarms) => {
-      console.log("Active alarms:", alarms);
-    });
-  });
-}
-
-// Make debug function available globally
-window.debugBackgroundActivity = debugBackgroundActivity;
 
 // Function to check background monitoring status
 function checkBackgroundStatus() {

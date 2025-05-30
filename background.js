@@ -179,33 +179,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({success: true});
     return true;
   }
-  else if (message.action === "generateChannelResponse") {
-    // Generate AI response for channel activity
-    (async () => {
-      try {
-        const responses = await generateResponses(message.text, true, message.channelName);
-        
-        // Update the mention in storage with the new responses
-        chrome.storage.local.get('mentions', (data) => {
-          const mentions = data.mentions || [];
-          const mentionIndex = mentions.findIndex(m => m.id === message.mentionId);
-          
-          if (mentionIndex >= 0) {
-            mentions[mentionIndex].suggestedResponses = responses;
-            chrome.storage.local.set({ mentions: mentions }, () => {
-              sendResponse({success: true, responses: responses});
-            });
-          } else {
-            sendResponse({success: false, error: "Mention not found"});
-          }
-        });
-      } catch (error) {
-        console.error("Error generating channel response:", error);
-        sendResponse({success: false, error: error.message});
-      }
-    })();
-    return true;
-  }
   else if (message.action === "workspaceInfoUpdate") {
     // Store the workspace and channel info from the content script
     console.log("Received workspace info update:", message.workspaceId, message.channelId);
@@ -224,9 +197,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.isDM) {
       notificationTitle = 'New Direct Message in Slack';
       notificationMessage = `New direct message: "${message.text.substring(0, 100)}..."`;
-    } else if (!message.isMention) {
-      notificationTitle = 'New Channel Activity in Slack';
-      notificationMessage = `New activity in ${message.channelName || 'a channel'}: "${message.text.substring(0, 100)}..."`;
     }
     
     chrome.notifications.create({
@@ -242,39 +212,69 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     // Store the mention and generate responses asynchronously
     (async () => {
-      // Generate responses for mentions AND channel activity (but with different prompts)
-      const responses = (message.isMention || !message.isMention) ? 
-        await generateResponses(message.text, !message.isMention && !message.isDM, message.channelName) : 
-        [];
-      
-      // Check if this message ID already exists in storage
-      chrome.storage.local.get('mentions', (data) => {
-        const mentions = data.mentions || [];
+      try {
+        // Generate responses for mentions and DMs only
+        const responses = await generateResponses(message.text, false, null);
         
-        // Check if this message already exists
-        const existingIndex = mentions.findIndex(m => m.id === message.id);
-        if (existingIndex >= 0) {
-          console.log("Message already exists in storage, skipping");
-          return;
-        }
-        
-        mentions.push({
-          id: message.id,
-          text: message.text,
-          timestamp: new Date().toISOString(),
-          threadId: message.threadId,
-          channelId: message.channelId,
-          messageUrl: message.messageUrl || null,
-          isMention: message.isMention || false,
-          isDM: message.isDM || false,
-          channelName: message.channelName || null,
-          suggestedResponses: responses
+        // Check if this message ID already exists in storage
+        chrome.storage.local.get('mentions', (data) => {
+          const mentions = data.mentions || [];
+          
+          // Check if this message already exists
+          const existingIndex = mentions.findIndex(m => m.id === message.id);
+          if (existingIndex >= 0) {
+            console.log("Message already exists in storage, skipping");
+            return;
+          }
+          
+          mentions.push({
+            id: message.id,
+            text: message.text,
+            timestamp: new Date().toISOString(),
+            threadId: message.threadId,
+            channelId: message.channelId,
+            messageUrl: message.messageUrl || null,
+            isMention: message.isMention || false,
+            isDM: message.isDM || false,
+            channelName: message.channelName || null,
+            suggestedResponses: responses
+          });
+          chrome.storage.local.set({ mentions: mentions }, () => {
+            // Update badge with unread count
+            updateBadge(mentions.length);
+          });
         });
-        chrome.storage.local.set({ mentions: mentions }, () => {
-          // Update badge with unread count
-          updateBadge(mentions.length);
+      } catch (error) {
+        console.error("Error in mentionFound handler:", error);
+        // Still store the mention without responses
+        chrome.storage.local.get('mentions', (data) => {
+          const mentions = data.mentions || [];
+          
+          // Check if this message already exists
+          const existingIndex = mentions.findIndex(m => m.id === message.id);
+          if (existingIndex >= 0) {
+            console.log("Message already exists in storage, skipping");
+            return;
+          }
+          
+          mentions.push({
+            id: message.id,
+            text: message.text,
+            timestamp: new Date().toISOString(),
+            threadId: message.threadId,
+            channelId: message.channelId,
+            messageUrl: message.messageUrl || null,
+            isMention: message.isMention || false,
+            isDM: message.isDM || false,
+            channelName: message.channelName || null,
+            suggestedResponses: []
+          });
+          chrome.storage.local.set({ mentions: mentions }, () => {
+            // Update badge with unread count
+            updateBadge(mentions.length);
+          });
         });
-      });
+      }
     })();
   }
   
@@ -290,7 +290,7 @@ async function generateResponses(text, isChannelActivity = false, channelName = 
   // If Gemini is enabled, use it regardless of API key
   if (data.useGemini) {
     try {
-      const responses = await getGeminiResponses(text, isChannelActivity, channelName);
+      const responses = await getGeminiResponses(text);
       return responses;
     } catch (error) {
       console.error("Error generating Gemini responses:", error);
@@ -306,7 +306,7 @@ async function generateResponses(text, isChannelActivity = false, channelName = 
   
   try {
     // Get AI-generated responses
-    const responses = await getAIResponses(text, data.apiType, data.apiKey, isChannelActivity, channelName);
+    const responses = await getAIResponses(text, data.apiType, data.apiKey);
     return responses;
   } catch (error) {
     console.error("Error generating AI responses:", error);
@@ -326,21 +326,21 @@ function getDefaultResponses() {
 }
 
 // Function to get AI-generated responses
-async function getAIResponses(text, apiType, apiKey, isChannelActivity = false, channelName = null) {
+async function getAIResponses(text, apiType, apiKey) {
   if (apiType === 'openai') {
-    return await getOpenAIResponses(text, apiKey, isChannelActivity, channelName);
+    return await getOpenAIResponses(text, apiKey);
   } else if (apiType === 'claude') {
-    return await getClaudeResponses(text, apiKey, isChannelActivity, channelName);
+    return await getClaudeResponses(text, apiKey);
   } else if (apiType === 'gemini') {
     // For Gemini, we'll use the browser tab directly
-    return await getGeminiResponses(text, isChannelActivity, channelName);
+    return await getGeminiResponses(text);
   } else {
     throw new Error("Unknown API type");
   }
 }
 
 // Get responses from Gemini by sending a message to the content script in the Gemini tab
-async function getGeminiResponses(text, isChannelActivity = false, channelName = null) {
+async function getGeminiResponses(text) {
   return new Promise((resolve, reject) => {
     // Try multiple URL patterns to find Gemini tabs
     const geminiUrlPatterns = [
@@ -366,11 +366,11 @@ async function getGeminiResponses(text, isChannelActivity = false, channelName =
               injectContentScriptIfNeeded(tabs[0].id, 'gemini-content.js');
               setTimeout(() => {
                 // Try again after injection
-                sendGeminiRequest(tabs[0].id, text, isChannelActivity, channelName, resolve, reject);
+                sendGeminiRequest(tabs[0].id, text, resolve, reject);
               }, 2000);
             } else {
               // Content script is ready
-              sendGeminiRequest(tabs[0].id, text, isChannelActivity, channelName, resolve, reject);
+              sendGeminiRequest(tabs[0].id, text, resolve, reject);
             }
           });
         }
@@ -393,11 +393,11 @@ async function getGeminiResponses(text, isChannelActivity = false, channelName =
                   injectContentScriptIfNeeded(geminiTabs[0].id, 'gemini-content.js');
                   setTimeout(() => {
                     // Try again after injection
-                    sendGeminiRequest(geminiTabs[0].id, text, isChannelActivity, channelName, resolve, reject);
+                    sendGeminiRequest(geminiTabs[0].id, text, resolve, reject);
                   }, 2000);
                 } else {
                   // Content script is ready
-                  sendGeminiRequest(geminiTabs[0].id, text, isChannelActivity, channelName, resolve, reject);
+                  sendGeminiRequest(geminiTabs[0].id, text, resolve, reject);
                 }
               });
             } else {
@@ -411,14 +411,10 @@ async function getGeminiResponses(text, isChannelActivity = false, channelName =
 }
 
 // Helper function to send Gemini request
-function sendGeminiRequest(tabId, text, isChannelActivity, channelName, resolve, reject) {
+function sendGeminiRequest(tabId, text, resolve, reject) {
   chrome.tabs.sendMessage(tabId, {
     action: "getGeminiResponses",
-    text: isChannelActivity && channelName ? 
-      `I am a manager at a tech firm. This channel is (#${channelName}) and this text was just brought up that may include me. Put together a potential answer for this that will provide the right mix of knowledge on the subject at hand: "${text}"` :
-      `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`,
-    isChannelActivity: isChannelActivity,
-    channelName: channelName
+    text: `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`,
   }, (response) => {
     if (chrome.runtime.lastError) {
       reject(new Error("Error communicating with Gemini tab: " + chrome.runtime.lastError.message));
@@ -436,17 +432,7 @@ function sendGeminiRequest(tabId, text, isChannelActivity, channelName, resolve,
 }
 
 // Get responses from OpenAI
-async function getOpenAIResponses(text, apiKey, isChannelActivity = false, channelName = null) {
-  let systemPrompt, userPrompt;
-  
-  if (isChannelActivity && channelName) {
-    systemPrompt = 'You are an AI assistant helping a manager at a tech firm respond to channel activity. Generate 4 brief, professional responses that demonstrate knowledge and leadership on the subject matter.';
-    userPrompt = `I am a manager at a tech firm. This channel is (#${channelName}) and this text was just brought up that may include me. Put together a potential answer for this that will provide the right mix of knowledge on the subject at hand: "${text}". Generate 4 different brief responses.`;
-  } else {
-    systemPrompt = 'You are an assistant helping to generate 4 brief, professional responses to a Slack message where the user was mentioned. Each response should be concise (under 100 characters) and appropriate for a workplace setting.';
-    userPrompt = `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`;
-  }
-  
+async function getOpenAIResponses(text, apiKey) {
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -457,12 +443,8 @@ async function getOpenAIResponses(text, apiKey, isChannelActivity = false, chann
       model: 'gpt-3.5-turbo',
       messages: [
         {
-          role: 'system',
-          content: systemPrompt
-        },
-        {
           role: 'user',
-          content: userPrompt
+          content: text
         }
       ],
       temperature: 0.7,
@@ -486,15 +468,7 @@ async function getOpenAIResponses(text, apiKey, isChannelActivity = false, chann
 }
 
 // Get responses from Claude
-async function getClaudeResponses(text, apiKey, isChannelActivity = false, channelName = null) {
-  let promptText;
-  
-  if (isChannelActivity && channelName) {
-    promptText = `I am a manager at a tech firm. This channel is (#${channelName}) and this text was just brought up that may include me. Put together a potential answer for this that will provide the right mix of knowledge on the subject at hand: "${text}". Generate 4 different brief responses that demonstrate knowledge and leadership on the subject matter. Format each response on a new line with a number.`;
-  } else {
-    promptText = `Generate 4 different brief responses to this Slack message where I was mentioned: "${text}". Each response should be concise (under 100 characters) and appropriate for a workplace setting. Format each response on a new line with a number.`;
-  }
-  
+async function getClaudeResponses(text, apiKey) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -508,7 +482,7 @@ async function getClaudeResponses(text, apiKey, isChannelActivity = false, chann
       messages: [
         {
           role: 'user',
-          content: promptText
+          content: text
         }
       ]
     })

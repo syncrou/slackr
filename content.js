@@ -322,15 +322,12 @@ function scanForMentions(manualCheck = false) {
   }
     
     const currentTime = Date.now();
-    console.log("Scanning for mentions at", new Date(currentTime).toLocaleTimeString());
+    console.log("Scanning for mentions and DMs at", new Date(currentTime).toLocaleTimeString());
     console.log("Current URL:", window.location.href);
     console.log("Current username:", userName, "Additional usernames:", additionalUserNames);
     
     // First, update workspace info whenever scanning occurs
     extractWorkspaceInfo();
-    
-    // Enhanced channel activity detection
-    scanForChannelActivity(manualCheck);
     
     // Check for Slackbot messages in any channel
     if (window.location.pathname.includes('/client/') && currentChannelId) {
@@ -432,6 +429,7 @@ function scanForMentions(manualCheck = false) {
         }
       }
       
+      // Only process if it's a direct mention OR a direct message
       if (isMention || isDM) {
         // Get the message container to extract more info
         const container = message.closest('.c-virtual_list__item, .c-message_kit__message, [data-qa="virtual-list-item"]');
@@ -443,7 +441,7 @@ function scanForMentions(manualCheck = false) {
           // Check if this is a new mention since last check
           const messageTimestamp = parseInt(threadId.split('.')[0]) * 1000 || Date.now();
           if (messageTimestamp > lastCheckedTimestamp) {
-            console.log("Found new mention/message:", message.textContent.substring(0, 50) + "...");
+            console.log("Found new mention/DM:", message.textContent.substring(0, 50) + "...");
             
             // Get the current URL to create a direct link to the message
             let messageUrl = window.location.href;
@@ -478,307 +476,6 @@ function scanForMentions(manualCheck = false) {
     });
     
     lastCheckedTimestamp = currentTime;
-}
-
-// Enhanced function to scan for channel activity
-function scanForChannelActivity(manualCheck = false) {
-  console.log("Scanning for channel activity...", manualCheck ? "(MANUAL CHECK)" : "(AUTOMATIC)");
-  
-  // Multiple selectors for different types of unread/highlighted channels
-  const channelActivitySelectors = [
-    // Bold/highlighted channel names (unread activity)
-    '.p-channel_sidebar__channel--unread',
-    '.p-channel_sidebar__channel--highlighted',
-    '.p-channel_sidebar__name--unread',
-    
-    // Channels with mention badges
-    '.p-channel_sidebar__channel:has(.c-mention_badge)',
-    '.p-channel_sidebar__channel:has([data-qa="mentions_badge"])',
-    
-    // Channels with unread indicators
-    '[data-qa="channel_sidebar_unread_channel"]',
-    '.c-channel_entity--unread',
-    
-    // Any channel with a red dot or badge
-    '.p-channel_sidebar__channel:has(.p-channel_sidebar__badge)',
-    '.p-channel_sidebar__channel:has(.c-badge)',
-    
-    // Channels that appear bold (CSS font-weight)
-    '.p-channel_sidebar__name[style*="font-weight: bold"]',
-    '.p-channel_sidebar__name[style*="font-weight:bold"]',
-    
-    // Modern Slack UI selectors
-    '[data-qa="channel_sidebar_channel_button"]:has([data-qa="channel_sidebar_unread_badge"])',
-    '[data-qa="channel_sidebar_channel_button"]:has(.c-mention_badge)',
-    
-    // Additional modern Slack selectors
-    '[data-qa="channel_sidebar_channel_button"][aria-describedby*="unread"]',
-    '.p-channel_sidebar__channel[aria-describedby*="unread"]',
-    '.p-channel_sidebar__channel--has-unreads',
-    '.p-channel_sidebar__channel--has-activity',
-    
-    // Channels with notification dots or indicators
-    '.p-channel_sidebar__channel:has(.p-channel_sidebar__unread_indicator)',
-    '.p-channel_sidebar__channel:has(.c-unread_indicator)',
-    '[data-qa="channel_sidebar_channel_button"]:has([data-qa="unread_indicator"])',
-    
-    // Channels with bold text (different approaches)
-    '.p-channel_sidebar__channel .p-channel_sidebar__name[style*="font-weight"]',
-    '.p-channel_sidebar__channel .p-channel_sidebar__name.p-channel_sidebar__name--unread',
-    
-    // Generic unread/activity indicators
-    '[data-qa*="unread"]',
-    '[class*="unread"]',
-    '[class*="highlighted"]',
-    '[class*="activity"]'
-  ];
-  
-  const foundChannels = new Set();
-  let totalElementsFound = 0;
-  
-  channelActivitySelectors.forEach(selector => {
-    try {
-      const elements = document.querySelectorAll(selector);
-      totalElementsFound += elements.length;
-      console.log(`Selector "${selector}" found ${elements.length} elements`);
-      
-      elements.forEach(element => {
-        const channelInfo = extractChannelInfo(element);
-        if (channelInfo && !foundChannels.has(channelInfo.channelId)) {
-          foundChannels.add(channelInfo.channelId);
-          
-          // Only notify if it's been at least 30 seconds since last check, OR if this is a manual check
-          if (manualCheck || Date.now() - lastCheckedTimestamp > 30000) {
-            console.log(`Found activity in channel: ${channelInfo.channelName} (${channelInfo.channelId}) - NOTIFYING`);
-            
-            chrome.runtime.sendMessage({
-              action: "mentionFound",
-              id: generateId(),
-              text: channelInfo.recentMessageText || `New activity in ${channelInfo.channelName || 'a channel'}`,
-              threadId: Date.now().toString(),
-              channelId: channelInfo.channelId,
-              isDM: channelInfo.isDM,
-              isMention: false, // Channel activity, not direct mention
-              messageUrl: channelInfo.messageUrl,
-              channelName: channelInfo.channelName
-            });
-          } else {
-            console.log(`Found activity in channel: ${channelInfo.channelName} (${channelInfo.channelId}) - SKIPPED (time restriction)`);
-          }
-        }
-      });
-    } catch (error) {
-      console.log(`Error with selector "${selector}":`, error);
-    }
-  });
-  
-  console.log(`Channel activity scan complete. Total elements found: ${totalElementsFound}, Unique channels: ${foundChannels.size}`);
-  
-  // Also check for channels that appear visually highlighted
-  scanForVisuallyHighlightedChannels(foundChannels, manualCheck);
-}
-
-// Function to extract channel information from a channel element
-function extractChannelInfo(channelElement) {
-  try {
-    // Find the channel name
-    let channelName = '';
-    const nameSelectors = [
-      '.p-channel_sidebar__name',
-      '.p-channel_sidebar__channel_name',
-      '[data-qa="channel_sidebar_name"]',
-      '.c-channel_entity__name',
-      'span[data-qa="channel_sidebar_name_text"]'
-    ];
-    
-    for (const selector of nameSelectors) {
-      const nameElement = channelElement.querySelector(selector);
-      if (nameElement && nameElement.textContent.trim()) {
-        channelName = nameElement.textContent.trim();
-        break;
-      }
-    }
-    
-    // If no name found, try getting it from the element itself
-    if (!channelName) {
-      channelName = channelElement.textContent.trim().split('\n')[0];
-    }
-    
-    // Extract channel ID - improved method
-    let channelId = channelElement.getAttribute('data-qa-channel-id') || 
-                   channelElement.getAttribute('data-channel-id') ||
-                   channelElement.getAttribute('data-qa-id');
-    
-    // Try to get channel ID from href - improved extraction
-    if (!channelId) {
-      const linkElement = channelElement.querySelector('a') || channelElement.closest('a');
-      if (linkElement && linkElement.href) {
-        const hrefMatch = linkElement.href.match(/\/client\/[^\/]+\/([^\/]+)/);
-        if (hrefMatch && hrefMatch[1]) {
-          channelId = hrefMatch[1];
-        }
-      }
-    }
-    
-    // Try to get from data attributes with more patterns
-    if (!channelId) {
-      const dataAttrs = ['data-qa-id', 'data-channel-id', 'data-sk', 'data-sidebar-item-id'];
-      for (const attr of dataAttrs) {
-        const value = channelElement.getAttribute(attr);
-        if (value && (value.startsWith('C') || value.startsWith('D') || value.startsWith('G'))) {
-          channelId = value;
-          break;
-        }
-      }
-    }
-    
-    // Try to extract from onClick or other event handlers
-    if (!channelId) {
-      const onclick = channelElement.getAttribute('onclick') || '';
-      const channelMatch = onclick.match(/[CDG][A-Z0-9]{8,}/);
-      if (channelMatch) {
-        channelId = channelMatch[0];
-      }
-    }
-    
-    // Get recent message text from the channel
-    let recentMessageText = '';
-    
-    // Try to find message preview or snippet in the sidebar
-    const messagePreviewSelectors = [
-      '.p-channel_sidebar__channel_info',
-      '.p-channel_sidebar__last_message',
-      '.c-channel_entity__last_message',
-      '[data-qa="channel_sidebar_last_message"]'
-    ];
-    
-    for (const selector of messagePreviewSelectors) {
-      const previewElement = channelElement.querySelector(selector);
-      if (previewElement && previewElement.textContent.trim()) {
-        recentMessageText = previewElement.textContent.trim();
-        break;
-      }
-    }
-    
-    // If no preview found in sidebar, try to navigate to the channel and get recent message
-    if (!recentMessageText && channelId) {
-      recentMessageText = getRecentMessageFromChannel(channelId, channelName);
-    }
-    
-    // Fallback to generic text if no recent message found
-    if (!recentMessageText) {
-      recentMessageText = `New activity detected in ${channelName}. Check the channel for recent updates.`;
-    }
-    
-    // Determine if it's a DM
-    const isDM = channelElement.classList.contains('p-channel_sidebar__channel--im') ||
-                channelElement.querySelector('[data-qa="channel_header_channel_type_icon_dm"]') !== null ||
-                channelName.includes('Direct message with') ||
-                (channelId && channelId.startsWith('D'));
-    
-    // Generate channel ID if still not found - use channel name hash
-    if (!channelId) {
-      // Create a more stable ID based on channel name
-      const nameHash = channelName.replace(/[^\w-]/g, '').toLowerCase();
-      channelId = 'GEN_' + nameHash + '_' + btoa(channelName).substr(0, 8);
-    }
-    
-    // Construct message URL - improved URL construction
-    const currentUrl = window.location.href;
-    const urlMatch = currentUrl.match(/\/client\/([^\/]+)/);
-    const workspaceId = urlMatch ? urlMatch[1] : '';
-    
-    let messageUrl = currentUrl;
-    if (workspaceId && channelId && channelId !== 'unknown') {
-      messageUrl = `https://app.slack.com/client/${workspaceId}/${channelId}`;
-    }
-    
-    return {
-      channelName,
-      channelId,
-      isDM,
-      messageUrl,
-      recentMessageText
-    };
-  } catch (error) {
-    console.log('Error extracting channel info:', error);
-    return null;
-  }
-}
-
-// Function to get recent message from a specific channel
-function getRecentMessageFromChannel(channelId, channelName) {
-  try {
-    // Check if we're currently in the target channel
-    const currentUrl = window.location.href;
-    if (currentUrl.includes(channelId)) {
-      // We're in the channel, get the most recent message
-      const messages = document.querySelectorAll('.c-message__body, .p-rich_text_section, [data-qa="message_content"]');
-      if (messages.length > 0) {
-        const lastMessage = messages[messages.length - 1];
-        return lastMessage.textContent.trim().substring(0, 200) + (lastMessage.textContent.length > 200 ? '...' : '');
-      }
-    }
-    
-    // If not in the channel, look for any cached or preview information
-    const channelElements = document.querySelectorAll(`[data-qa-channel-id="${channelId}"], [data-channel-id="${channelId}"]`);
-    for (const element of channelElements) {
-      const messagePreview = element.querySelector('.p-channel_sidebar__last_message, .c-channel_entity__last_message');
-      if (messagePreview && messagePreview.textContent.trim()) {
-        return messagePreview.textContent.trim();
-      }
-    }
-    
-    return `Check recent activity in #${channelName}`;
-  } catch (error) {
-    console.log('Error getting recent message:', error);
-    return `New activity in #${channelName}`;
-  }
-}
-
-// Function to scan for visually highlighted channels (bold text, etc.)
-function scanForVisuallyHighlightedChannels(foundChannels, manualCheck) {
-  // Get all channel name elements
-  const channelNameElements = document.querySelectorAll(
-    '.p-channel_sidebar__name, .p-channel_sidebar__channel_name, [data-qa="channel_sidebar_name"]'
-  );
-  
-  channelNameElements.forEach(nameElement => {
-    try {
-      const computedStyle = window.getComputedStyle(nameElement);
-      const fontWeight = computedStyle.fontWeight;
-      
-      // Check if the channel appears bold (font-weight > 400 is typically bold)
-      if (fontWeight === 'bold' || fontWeight === '700' || parseInt(fontWeight) > 400) {
-        const channelElement = nameElement.closest('.p-channel_sidebar__channel, [data-qa="channel_sidebar_channel_button"]');
-        if (channelElement) {
-          const channelInfo = extractChannelInfo(channelElement);
-          if (channelInfo && !foundChannels.has(channelInfo.channelId)) {
-            foundChannels.add(channelInfo.channelId);
-            
-            // Only notify if it's been at least 30 seconds since last check, OR if this is a manual check
-            if (manualCheck || Date.now() - lastCheckedTimestamp > 30000) {
-              console.log(`Found visually highlighted channel: ${channelInfo.channelName} (${channelInfo.channelId})`);
-              
-              chrome.runtime.sendMessage({
-                action: "mentionFound",
-                id: generateId(),
-                text: channelInfo.recentMessageText || `New activity in ${channelInfo.channelName || 'a channel'} (highlighted)`,
-                threadId: Date.now().toString(),
-                channelId: channelInfo.channelId,
-                isDM: channelInfo.isDM,
-                isMention: false,
-                messageUrl: channelInfo.messageUrl,
-                channelName: channelInfo.channelName
-              });
-            }
-          }
-        }
-      }
-    } catch (error) {
-      console.log('Error checking visual highlighting:', error);
-    }
-  });
 }
 
 // Function to send a response in Slack
@@ -947,49 +644,4 @@ new MutationObserver(() => {
 
 // Log that the content script has loaded
 console.log("Slack Mention Monitor content script loaded at", new Date().toLocaleTimeString());
-
-// Debug function to help troubleshoot channel activity detection
-// Can be called from browser console: window.debugSlackChannels()
-window.debugSlackChannels = function() {
-  console.log("=== DEBUG: Slack Channel Activity Detection ===");
-  console.log("Current URL:", window.location.href);
-  
-  // Check for sidebar
-  const sidebar = document.querySelector('.p-channel_sidebar, [data-qa="channel_sidebar"]');
-  console.log("Sidebar found:", !!sidebar);
-  
-  if (sidebar) {
-    // Look for all channel elements
-    const allChannels = sidebar.querySelectorAll('.p-channel_sidebar__channel, [data-qa="channel_sidebar_channel_button"]');
-    console.log(`Total channels found: ${allChannels.length}`);
-    
-    // Check each channel for activity indicators
-    allChannels.forEach((channel, index) => {
-      const nameElement = channel.querySelector('.p-channel_sidebar__name, [data-qa="channel_sidebar_name"]');
-      const channelName = nameElement ? nameElement.textContent.trim() : 'Unknown';
-      
-      // Check for various activity indicators
-      const hasUnreadClass = channel.classList.contains('p-channel_sidebar__channel--unread');
-      const hasHighlightedClass = channel.classList.contains('p-channel_sidebar__channel--highlighted');
-      const hasBadge = channel.querySelector('.c-mention_badge, .p-channel_sidebar__badge, .c-badge');
-      const hasUnreadIndicator = channel.querySelector('.p-channel_sidebar__unread_indicator, .c-unread_indicator');
-      
-      // Check font weight
-      const computedStyle = nameElement ? window.getComputedStyle(nameElement) : null;
-      const fontWeight = computedStyle ? computedStyle.fontWeight : 'unknown';
-      const isBold = fontWeight === 'bold' || fontWeight === '700' || parseInt(fontWeight) > 400;
-      
-      if (hasUnreadClass || hasHighlightedClass || hasBadge || hasUnreadIndicator || isBold) {
-        console.log(`Channel ${index + 1}: "${channelName}" - ACTIVITY DETECTED`);
-        console.log(`  - Unread class: ${hasUnreadClass}`);
-        console.log(`  - Highlighted class: ${hasHighlightedClass}`);
-        console.log(`  - Has badge: ${!!hasBadge}`);
-        console.log(`  - Has unread indicator: ${!!hasUnreadIndicator}`);
-        console.log(`  - Font weight: ${fontWeight} (bold: ${isBold})`);
-        console.log(`  - Element:`, channel);
-      }
-    });
-  }
-  
-  console.log("=== END DEBUG ===");
-};
+console.log("Extension configured for mentions and DMs only");
