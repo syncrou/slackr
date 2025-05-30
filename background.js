@@ -8,7 +8,8 @@ chrome.runtime.onInstalled.addListener(() => {
     mentions: [],
     apiType: "openai",
     apiKey: "",
-    useGemini: false
+    useGemini: false,
+    enhancedDetection: true // Default to enabled for better detection
     // No hardcoded workspace or channel IDs - will be detected dynamically
   });
 });
@@ -55,12 +56,23 @@ chrome.tabs.onActivated.addListener((activeInfo) => {
 // Listen for alarm
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'checkSlackMentions') {
-    checkForMentions();
+    // Check if enhanced detection is enabled
+    chrome.storage.local.get('enhancedDetection', (data) => {
+      const useEnhanced = data.enhancedDetection !== false; // Default to true
+      
+      if (useEnhanced) {
+        console.log("Background check triggered - using enhanced detection");
+        checkForMentions(true); // Use enhanced activation for background checks
+      } else {
+        console.log("Background check triggered - using standard detection");
+        checkForMentions(false); // Use standard detection
+      }
+    });
   }
 });
 
 // Function to check for mentions
-function checkForMentions() {
+function checkForMentions(useActivation = false) {
   chrome.tabs.query({url: "https://app.slack.com/*"}, (tabs) => {
     if (tabs.length > 0) {
       console.log("Found Slack tabs:", tabs.length);
@@ -73,7 +85,11 @@ function checkForMentions() {
             console.log("Content script not ready, injecting and retrying...");
             injectContentScriptIfNeeded(tabs[0].id, 'content.js');
             // Continue with scanning other tabs
-            scanAllSlackTabs(tabs);
+            if (useActivation) {
+              scanAllSlackTabsWithActivation(tabs);
+            } else {
+              scanAllSlackTabs(tabs);
+            }
             return;
           }
           
@@ -93,13 +109,22 @@ function checkForMentions() {
             }
             
             // Continue with sending checkMentions to all tabs
-            scanAllSlackTabs(tabs);
+            if (useActivation) {
+              console.log("Using enhanced tab activation for better detection...");
+              scanAllSlackTabsWithActivation(tabs);
+            } else {
+              scanAllSlackTabs(tabs);
+            }
           });
         });
       } catch (e) {
         console.log("Exception getting workspace info:", e.message);
         // Still try to scan tabs even if getting workspace info fails
-        scanAllSlackTabs(tabs);
+        if (useActivation) {
+          scanAllSlackTabsWithActivation(tabs);
+        } else {
+          scanAllSlackTabs(tabs);
+        }
       }
     } else {
       console.log("No Slack tabs found");
@@ -133,6 +158,77 @@ function scanAllSlackTabs(tabs) {
     } catch (e) {
       console.log("Exception when sending message to tab:", e.message);
     }
+  });
+}
+
+// Enhanced function to scan Slack tabs with activation for better detection
+function scanAllSlackTabsWithActivation(tabs) {
+  if (tabs.length === 0) return;
+  
+  // Get the currently active tab to restore it later
+  chrome.tabs.query({active: true, currentWindow: true}, (activeTabs) => {
+    const originalActiveTab = activeTabs.length > 0 ? activeTabs[0] : null;
+    
+    // Process each Slack tab sequentially
+    let tabIndex = 0;
+    
+    function processNextTab() {
+      if (tabIndex >= tabs.length) {
+        // Restore original active tab
+        if (originalActiveTab && originalActiveTab.id !== tabs[0].id) {
+          chrome.tabs.update(originalActiveTab.id, {active: true}).catch(() => {
+            // Ignore errors if we can't restore the original tab
+          });
+        }
+        return;
+      }
+      
+      const tab = tabs[tabIndex];
+      
+      try {
+        // Check if content script is ready
+        chrome.tabs.sendMessage(tab.id, {action: "ping"}, (response) => {
+          if (chrome.runtime.lastError) {
+            console.log(`Tab ${tab.id} content script not ready:`, chrome.runtime.lastError.message);
+            if (tab.url && tab.url.includes('slack.com')) {
+              injectContentScriptIfNeeded(tab.id, 'content.js');
+            }
+            tabIndex++;
+            processNextTab();
+          } else {
+            // Briefly activate the tab to force Slack to refresh
+            chrome.tabs.update(tab.id, {active: true}, () => {
+              if (chrome.runtime.lastError) {
+                console.log(`Could not activate tab ${tab.id}:`, chrome.runtime.lastError.message);
+                tabIndex++;
+                processNextTab();
+                return;
+              }
+              
+              // Wait a moment for Slack to update, then check mentions
+              setTimeout(() => {
+                chrome.tabs.sendMessage(tab.id, {action: "checkMentions"}, () => {
+                  if (chrome.runtime.lastError) {
+                    console.log(`Non-critical error sending checkMentions to tab ${tab.id}:`, chrome.runtime.lastError.message);
+                  }
+                  
+                  // Move to next tab after a short delay
+                  tabIndex++;
+                  setTimeout(processNextTab, 500);
+                });
+              }, 1000);
+            });
+          }
+        });
+      } catch (e) {
+        console.log("Exception when processing tab:", e.message);
+        tabIndex++;
+        processNextTab();
+      }
+    }
+    
+    // Start processing tabs
+    processNextTab();
   });
 }
 
