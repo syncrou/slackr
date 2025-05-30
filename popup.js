@@ -29,6 +29,9 @@ document.addEventListener('DOMContentLoaded', function() {
   // Add event listener for Slack URL save button
   document.getElementById('save-slack-url').addEventListener('click', saveSlackUrl);
   
+  // Add event listener for enhanced detection checkbox
+  document.getElementById('enhanced-detection').addEventListener('change', saveEnhancedDetectionSetting);
+  
   // Add event listener for check now button
   document.getElementById('check-now').addEventListener('click', checkForMentionsNow);
   
@@ -161,6 +164,8 @@ async function openConfiguredSlackChannel() {
 // Function to get the username from the specific Slack channel
 function getUsernameFromSpecificChannel(tabId) {
   const usernameDisplay = document.getElementById('username-display');
+  const userAvatar = document.getElementById('user-avatar');
+  const userVariations = document.getElementById('user-variations');
   
   // Update display to show we're fetching from specific channel
   usernameDisplay.textContent = 'Fetching username from configured Slack channel...';
@@ -192,36 +197,53 @@ function getUsernameFromSpecificChannel(tabId) {
         usernameDisplay.textContent = response.userName;
         usernameDisplay.style.color = '#5cb85c';
         
+        // Show avatar if available
+        if (response.userAvatar) {
+          userAvatar.src = response.userAvatar;
+          userAvatar.style.display = 'block';
+        } else {
+          userAvatar.style.display = 'none';
+        }
+        
+        // Show additional username variations if available
+        if (response.additionalUserNames && response.additionalUserNames.length > 1) {
+          const variations = response.additionalUserNames.slice(1, 4); // Show first 3 variations
+          userVariations.textContent = `Also checking for: ${variations.join(', ')}`;
+          userVariations.style.display = 'block';
+        } else {
+          userVariations.style.display = 'none';
+        }
+        
         // Store the username in local storage for future reference
         chrome.storage.local.set({ 
           detectedUsername: response.userName,
-          additionalUserNames: response.additionalUserNames || []
+          additionalUserNames: response.additionalUserNames || [],
+          userAvatar: response.userAvatar || ''
         });
         
-        if (response.additionalUserNames && response.additionalUserNames.length > 0) {
-          const additionalNames = document.createElement('div');
-          additionalNames.style.fontSize = '0.8em';
-          additionalNames.style.color = '#888';
-          additionalNames.style.marginTop = '5px';
-          additionalNames.textContent = 'Also checking for: ' + response.additionalUserNames.join(', ');
-          usernameDisplay.appendChild(additionalNames);
-        }
-        
-        showNotice("Username detected successfully!", 'success');
+        showNotice(`Username detected: ${response.userName}`, 'success');
       } else {
-        // Username detection failed or returned "Unknown"
-        usernameDisplay.textContent = 'Username not detected - trying alternative methods...';
-        usernameDisplay.style.color = '#f0ad4e';
+        usernameDisplay.textContent = ':no_entry:';
+        usernameDisplay.style.color = '#d9534f';
+        userAvatar.style.display = 'none';
+        userVariations.style.display = 'none';
         
-        // Try to get from stored data first
-        chrome.storage.local.get('detectedUsername', (data) => {
-          if (data.detectedUsername && data.detectedUsername !== "Unknown") {
+        // Try to get from storage as fallback
+        chrome.storage.local.get(['detectedUsername', 'additionalUserNames', 'userAvatar'], (data) => {
+          if (data.detectedUsername) {
             usernameDisplay.textContent = data.detectedUsername + ' (cached)';
-            usernameDisplay.style.color = '#5cb85c';
-            showNotice("Using cached username. Open Slack to refresh detection.", 'info');
-          } else {
-            // Show manual input option
-            showManualUsernameInput();
+            usernameDisplay.style.color = '#f0ad4e';
+            
+            if (data.userAvatar) {
+              userAvatar.src = data.userAvatar;
+              userAvatar.style.display = 'block';
+            }
+            
+            if (data.additionalUserNames && data.additionalUserNames.length > 1) {
+              const variations = data.additionalUserNames.slice(1, 4);
+              userVariations.textContent = `Also checking for: ${variations.join(', ')}`;
+              userVariations.style.display = 'block';
+            }
           }
         });
       }
@@ -326,10 +348,32 @@ function checkForMentionsNow() {
 
 // Load mentions from storage
 function loadMentions() {
-  chrome.storage.local.get('mentions', (data) => {
+  // Also load user info from storage
+  chrome.storage.local.get(['mentions', 'detectedUsername', 'additionalUserNames', 'userAvatar'], (data) => {
     const mentions = data.mentions || [];
     const container = document.getElementById('mentions-container');
     const noMentionsElement = document.getElementById('no-mentions');
+    
+    // Update user info display if available
+    const usernameDisplay = document.getElementById('username-display');
+    const userAvatar = document.getElementById('user-avatar');
+    const userVariations = document.getElementById('user-variations');
+    
+    if (data.detectedUsername && usernameDisplay) {
+      usernameDisplay.textContent = data.detectedUsername;
+      usernameDisplay.style.color = '#5cb85c';
+      
+      if (data.userAvatar && userAvatar) {
+        userAvatar.src = data.userAvatar;
+        userAvatar.style.display = 'block';
+      }
+      
+      if (data.additionalUserNames && data.additionalUserNames.length > 1 && userVariations) {
+        const variations = data.additionalUserNames.slice(1, 4);
+        userVariations.textContent = `Also checking for: ${variations.join(', ')}`;
+        userVariations.style.display = 'block';
+      }
+    }
     
     // Check if required elements exist
     if (!container) {
@@ -511,7 +555,7 @@ function sendResponse(threadId, responseText) {
 
 // Load settings from storage
 function loadSettings() {
-  chrome.storage.local.get(['apiType', 'apiKey', 'useGemini', 'slackUrl'], (data) => {
+  chrome.storage.local.get(['apiType', 'apiKey', 'useGemini', 'slackUrl', 'enhancedDetection'], (data) => {
     // Load API settings
     if (data.apiType) {
       document.getElementById('api-type').value = data.apiType;
@@ -526,6 +570,9 @@ function loadSettings() {
     } else {
       document.getElementById('slack-url').value = DEFAULT_SLACK_URL;
     }
+    
+    // Load enhanced detection setting
+    document.getElementById('enhanced-detection').checked = data.enhancedDetection !== false; // Default to true
     
     // Update current Slack URL display
     updateCurrentSlackUrlDisplay();
@@ -733,5 +780,19 @@ function checkBackgroundStatus() {
         }
       });
     }
+  });
+}
+
+// Function to save enhanced detection setting
+function saveEnhancedDetectionSetting() {
+  const enhancedDetection = document.getElementById('enhanced-detection').checked;
+  
+  chrome.storage.local.set({ enhancedDetection: enhancedDetection }, () => {
+    showNotice(
+      enhancedDetection 
+        ? "Enhanced background detection enabled!" 
+        : "Enhanced background detection disabled!", 
+      'success'
+    );
   });
 }

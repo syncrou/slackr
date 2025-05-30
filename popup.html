@@ -175,6 +175,34 @@
       display: block;
       margin-bottom: 5px;
     }
+    .user-info {
+      display: flex;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      background-color: #f9f9f9;
+    }
+    .user-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      margin-right: 10px;
+      border: 2px solid #4A154B;
+    }
+    .user-details {
+      flex: 1;
+    }
+    .user-name {
+      font-weight: bold;
+      color: #333;
+    }
+    .user-variations {
+      font-size: 0.8em;
+      color: #666;
+      margin-top: 2px;
+    }
     .settings-toggle {
       background-color: #007cba;
       color: white;
@@ -308,8 +336,14 @@
     </div>
     
     <div class="username-display">
-      <label>Your Slack Username: <span style="font-size: 0.8em; color: #888;">(from configured channel)</span></label>
-      <div id="username-display" style="padding: 5px; border: 1px solid #ddd; border-radius: 4px; margin-bottom: 10px; background-color: #f9f9f9;">Loading...</div>
+      <label>Your Slack Profile:</label>
+      <div class="user-info" id="user-info">
+        <img id="user-avatar" class="user-avatar" style="display: none;" alt="User Avatar">
+        <div class="user-details">
+          <div class="user-name" id="username-display">Loading...</div>
+          <div class="user-variations" id="user-variations" style="display: none;"></div>
+        </div>
+      </div>
       <div style="font-size: 0.8em; color: #888; margin-top: -5px; margin-bottom: 10px;">
         Channel: <span id="current-slack-url">Not configured</span>
       </div>
@@ -330,6 +364,14 @@
         <input type="url" id="slack-url" placeholder="https://app.slack.com/client/WORKSPACE/CHANNEL">
         <div class="help-text">Enter the full URL of the Slack channel to monitor for your username</div>
         <button id="save-slack-url">Save Slack URL</button>
+        
+        <div style="margin-top: 15px;">
+          <label>
+            <input type="checkbox" id="enhanced-detection" style="margin-right: 8px;">
+            Enhanced Background Detection
+          </label>
+          <div class="help-text">Briefly activates Slack tabs during background checks for better mention detection when tabs are inactive. May cause brief tab switching.</div>
+        </div>
       </div>
       
       <div class="settings-section">
